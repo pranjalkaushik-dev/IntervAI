@@ -1,0 +1,14 @@
+const express = require('express');
+const router = express.Router();
+const authMiddleware = require('../../shared/middlewares/auth.middleware');
+const authorizeRoles = require('../../shared/middlewares/role.middleware');
+const { listUsers, updateUser, createManagedUser, getAnalytics, listCompanies, listReports, getSystemStatus } = require('./admin.controller');
+router.use(authMiddleware, authorizeRoles('ADMIN'));
+router.get('/users', listUsers);
+router.post('/users', createManagedUser);
+router.patch('/users/:id', updateUser);
+router.get('/companies', listCompanies);
+router.get('/analytics', getAnalytics);
+router.get('/reports', listReports);
+router.get('/system', getSystemStatus);
+module.exports = router;
