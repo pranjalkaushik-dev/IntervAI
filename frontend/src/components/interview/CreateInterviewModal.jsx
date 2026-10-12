@@ -1,6 +1,74 @@
 import React, { useState } from 'react';
 import { X, Check, Copy, ArrowRight, ShieldCheck } from 'lucide-react';
 
+const PROBLEM_DEFINITIONS = {
+  'Two Sum': {
+    title: 'Two Sum',
+    difficulty: 'EASY',
+    topic: 'Arrays & Hashing',
+    prompt: 'Given an array of integers nums and an integer target, return indices of the two numbers such that they add up to target.\n\nYou may assume that each input would have exactly one solution, and you may not use the same element twice.\n\nYou can return the answer in any order.',
+    examples: [
+      {
+        input: 'nums = [2,7,11,15], target = 9',
+        output: '[0,1]',
+        explanation: 'Because nums[0] + nums[1] == 9, we return [0, 1].'
+      }
+    ],
+    testCases: [
+      {
+        input: 'nums = [2,7,11,15], target = 9',
+        expected: '[0,1]'
+      },
+      {
+        input: 'nums = [3,2,4], target = 6',
+        expected: '[1,2]'
+      },
+      {
+        input: 'nums = [3,3], target = 6',
+        expected: '[0,1]'
+      }
+    ]
+  },
+  'Binary Tree Traversal': {
+    title: 'Binary Tree Inorder Traversal',
+    difficulty: 'MEDIUM',
+    topic: 'Trees',
+    prompt: 'Given the root of a binary tree, return the inorder traversal of its nodes\' values as a list.',
+    examples: [
+      {
+        input: 'root = [1,null,2,3]',
+        output: '[1,3,2]',
+        explanation: 'Inorder traversal visits left subtree, root, then right subtree.'
+      }
+    ],
+    testCases: [
+      {
+        input: 'root = [1,null,2,3]',
+        expected: '[1,3,2]'
+      }
+    ]
+  },
+  'LRU Cache': {
+    title: 'LRU Cache Design',
+    difficulty: 'HARD',
+    topic: 'Data Structures',
+    prompt: 'Design a data structure that follows the constraints of a Least Recently Used (LRU) cache.\n\nImplement the LRUCache class with get(key) and put(key, value) operations in O(1) time complexity.',
+    examples: [
+      {
+        input: 'LRUCache(2); put(1, 1); put(2, 2); get(1); put(3, 3); get(2);',
+        output: '[null, null, null, 1, null, -1]',
+        explanation: 'Cache capacity is 2. When key 3 is added, key 2 is evicted.'
+      }
+    ],
+    testCases: [
+      {
+        input: 'LRUCache(2); put(1, 1); put(2, 2); get(1); put(3, 3); get(2);',
+        expected: '[null, null, null, 1, null, -1]'
+      }
+    ]
+  }
+};
+
 const DEFAULT_PROBLEMS = [
   ['Two Sum', 'Easy'],
   ['Binary Tree Traversal', 'Medium'],
@@ -28,7 +96,7 @@ export default function CreateInterviewModal({ isOpen, onClose, onSubmit, create
     e.preventDefault();
     setBusy(true);
     try {
-      const selectedProblem = DEFAULT_PROBLEMS.find((x) => x[0] === formData.problem);
+      const problemDef = PROBLEM_DEFINITIONS[formData.problem] || PROBLEM_DEFINITIONS['Two Sum'];
       await onSubmit({
         title: formData.title,
         description: formData.description,
@@ -40,16 +108,13 @@ export default function CreateInterviewModal({ isOpen, onClose, onSubmit, create
           enableCameraPrototype: formData.dual,
         },
         question: {
+          title: problemDef.title,
           type: 'CODING',
-          prompt: formData.description,
-          difficulty: (selectedProblem?.[1] || 'Medium').toUpperCase(),
-          topic: 'Algorithms',
-          testCases: [
-            {
-              input: 'nums = [2,7,11,15], target = 9',
-              expected: '[0,1]',
-            },
-          ],
+          prompt: problemDef.prompt,
+          difficulty: problemDef.difficulty,
+          topic: problemDef.topic,
+          examples: problemDef.examples,
+          testCases: problemDef.testCases,
         },
       });
     } finally {

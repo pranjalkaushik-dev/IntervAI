@@ -277,10 +277,10 @@ export default function InterviewerDashboard() {
           </div>
 
           {/* Sessions Table */}
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto max-h-[520px] overflow-y-auto relative border-t border-[#DFE5EF]">
             <table className="w-full text-left border-collapse text-xs">
-              <thead>
-                <tr className="border-b border-[#DFE5EF] bg-white text-[#596579] uppercase text-[11px] font-bold tracking-wider">
+              <thead className="sticky top-0 z-10 bg-white shadow-[0_1px_0_#DFE5EF]">
+                <tr className="border-b border-[#DFE5EF] bg-[#FBFDFD] text-[#596579] uppercase text-[11px] font-bold tracking-wider">
                   <th className="py-3 px-5">Session Details</th>
                   <th className="py-3 px-4">Candidate</th>
                   <th className="py-3 px-4">Schedule</th>

@@ -5,7 +5,10 @@ const {
   runCode,
   submitCode,
   getSupportedLanguages,
-  getSubmissionsByInterview
+  getSubmissionsByInterview,
+  runPracticeCode,
+  submitPracticeCode,
+  getPracticeSubmissions
 } = require('./coding.controller');
 
 const authMiddleware = require('../../shared/middlewares/auth.middleware');
@@ -27,5 +30,10 @@ router.get(
   authMiddleware,
   getSubmissionsByInterview
 );
+
+// Isolated Practice Coding Endpoints
+router.post('/practice/run', authMiddleware, executionLimiter, runPracticeCode);
+router.post('/practice/submit', authMiddleware, submitPracticeCode);
+router.get('/practice/submissions/:questionId', authMiddleware, getPracticeSubmissions);
 
 module.exports = router;

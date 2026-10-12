@@ -5,6 +5,7 @@ const Submission = require('../modules/coding/submission.model');
 const ViolationLog = require('../modules/monitoring/violation.model');
 const InterviewReport = require('../modules/interviews/report.model');
 const SystemDesign = require('../modules/interviews/systemDesign.model');
+const migrateQuestions = require('./migrate-questions');
 
 const migrateLegacyData = async () => {
   await User.updateMany({ accountRole: 'CANDIDATE' }, { $set: { accountRole: 'STUDENT' } });
@@ -30,18 +31,28 @@ const migrateLegacyData = async () => {
 };
 
 const connectDB = async () => {
+  const uri = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/intervai';
   try {
-    const conn = await mongoose.connect(process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/collaborative_interview_db', { serverSelectionTimeoutMS: 4000 });
+    const conn = await mongoose.connect(uri, { serverSelectionTimeoutMS: 10000 });
     console.log(`[Database] MongoDB Connected Successfully: ${conn.connection.host}`);
     try {
       await migrateLegacyData();
+      await migrateQuestions();
       console.log('[Database] Legacy roles/statuses/student identifiers normalized.');
     } catch (migrationError) {
       console.warn(`[Database Warning] Legacy-data migration skipped: ${migrationError.message}`);
     }
   } catch (error) {
-    console.warn(`[Database Warning] MongoDB Connection Failed: ${error.message}`);
-    console.warn('[Database Warning] Server running in offline/in-memory mode for Socket.IO and live collaboration.');
+    console.warn(`[Database Warning] Primary MongoDB connection failed (${error.message}). Attempting local fallback...`);
+    try {
+      const fallbackConn = await mongoose.connect('mongodb://127.0.0.1:27017/intervai', { serverSelectionTimeoutMS: 3000 });
+      console.log(`[Database] Local MongoDB Connected Successfully: ${fallbackConn.connection.host}`);
+      await migrateLegacyData();
+      await migrateQuestions();
+    } catch (fallbackError) {
+      console.warn(`[Database Warning] Local MongoDB fallback failed: ${fallbackError.message}`);
+      console.warn('[Database Warning] Server running in offline/in-memory mode for Socket.IO and live collaboration.');
+    }
   }
 };
 

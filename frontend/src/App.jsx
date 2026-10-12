@@ -14,6 +14,7 @@ import CandidateJoinPage from './pages/CandidateJoinPage';
 import CandidateWaitingRoom from './pages/CandidateWaitingRoom';
 import InterviewRoomPage from './pages/InterviewRoomPage';
 import QuestionBankPage from './pages/QuestionBankPage';
+import CodingPlaygroundPage from './pages/CodingPlaygroundPage';
 import AnalyticsPage from './pages/AnalyticsPage';
 import SettingsPage from './pages/SettingsPage';
 import MockInterviewsPage from './pages/MockInterviewsPage';
@@ -154,14 +155,32 @@ function AppRoutes() {
         }
       />
 
-      {/* Protected: Question Bank (Company only) */}
+      {/* Protected: Question Bank (Company repository & Candidate practice) */}
       <Route
         path="/questions"
         element={
-          <ProtectedRoute allowedRoles={['COMPANY']}>
+          <ProtectedRoute allowedRoles={['COMPANY', 'STUDENT']}>
             <AppShell>
               <QuestionBankPage />
             </AppShell>
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Dedicated Coding Playground Practice Mode (Separate from live interviews) */}
+      <Route
+        path="/practice/solve/:id"
+        element={
+          <ProtectedRoute allowedRoles={['COMPANY', 'STUDENT']}>
+            <CodingPlaygroundPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/questions/:id/practice"
+        element={
+          <ProtectedRoute allowedRoles={['COMPANY', 'STUDENT']}>
+            <CodingPlaygroundPage />
           </ProtectedRoute>
         }
       />

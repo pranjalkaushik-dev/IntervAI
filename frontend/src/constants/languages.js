@@ -4,19 +4,18 @@ export const SUPPORTED_LANGUAGES = [
     name: 'Python (3.8.1)',
     monacoLang: 'python',
     extension: 'py',
-    starterCode: `# Collaborative Coding Interview - Python
-# Task: Given an array of integers nums and an integer target,
-# return the indices of the two numbers that add up to the target.
+    starterCode: `# Collaborative Coding Practice - Python
+import json
 
 def two_sum(nums, target):
-    # TODO: implement the two-sum solution.
-    return []
+    # Implement your solution
+    return [0, 1]
 
 if __name__ == "__main__":
     nums = [2, 7, 11, 15]
     target = 9
-    print(f"Input nums={nums}, target={target}")
-    print(f"Output indices: {two_sum(nums, target)}")
+    result = two_sum(nums, target)
+    print(json.dumps(result))
 `
   },
   {
@@ -24,41 +23,15 @@ if __name__ == "__main__":
     name: 'JavaScript (Node.js)',
     monacoLang: 'javascript',
     extension: 'js',
-    starterCode: `// Collaborative Coding Interview - JavaScript (Node.js)
-// Task: Two Sum Problem
-
+    starterCode: `// Collaborative Coding Practice - JavaScript (Node.js)
 function twoSum(nums, target) {
-  // TODO: implement the two-sum solution.
-  return [];
+  // Implement your solution
+  return [0, 1];
 }
 
 const nums = [2, 7, 11, 15];
 const target = 9;
-console.log("Inputs: nums =", nums, ", target =", target);
-console.log("Output Indices:", twoSum(nums, target));
-`
-  },
-  {
-    id: 54,
-    name: 'C++ (GCC 9.2.0)',
-    monacoLang: 'cpp',
-    extension: 'cpp',
-    starterCode: `// Collaborative Coding Interview - C++
-#include <iostream>
-#include <vector>
-
-std::vector<int> twoSum(const std::vector<int>& nums, int target) {
-    // TODO: implement the two-sum solution.
-    return {};
-}
-
-int main() {
-    std::vector<int> nums = {2, 7, 11, 15};
-    int target = 9;
-    std::vector<int> result = twoSum(nums, target);
-    std::cout << "Two Sum indices: " << result.size() << std::endl;
-    return 0;
-}
+console.log(JSON.stringify(twoSum(nums, target)));
 `
   },
   {
@@ -66,21 +39,44 @@ int main() {
     name: 'Java (OpenJDK 13.0.1)',
     monacoLang: 'java',
     extension: 'java',
-    starterCode: `// Collaborative Coding Interview - Java
+    starterCode: `// Collaborative Coding Practice - Java
 import java.util.*;
 
 public class Main {
     public static int[] twoSum(int[] nums, int target) {
-        // TODO: implement the two-sum solution.
-        return new int[] {};
+        // Implement your solution
+        return new int[] {0, 1};
     }
 
     public static void main(String[] args) {
         int[] nums = {2, 7, 11, 15};
         int target = 9;
         int[] res = twoSum(nums, target);
-        System.out.println("Result: " + Arrays.toString(res));
+        System.out.println(Arrays.toString(res));
     }
+}
+`
+  },
+  {
+    id: 54,
+    name: 'C++ (GCC 9.2.0)',
+    monacoLang: 'cpp',
+    extension: 'cpp',
+    starterCode: `// Collaborative Coding Practice - C++
+#include <iostream>
+#include <vector>
+
+std::vector<int> twoSum(const std::vector<int>& nums, int target) {
+    // Implement your solution
+    return {0, 1};
+}
+
+int main() {
+    std::vector<int> nums = {2, 7, 11, 15};
+    int target = 9;
+    std::vector<int> res = twoSum(nums, target);
+    std::cout << "[" << res[0] << "," << res[1] << "]" << std::endl;
+    return 0;
 }
 `
   },
@@ -89,15 +85,15 @@ public class Main {
     name: 'TypeScript (3.7.4)',
     monacoLang: 'typescript',
     extension: 'ts',
-    starterCode: `// Collaborative Coding Interview - TypeScript
+    starterCode: `// Collaborative Coding Practice - TypeScript
 function twoSum(nums: number[], target: number): number[] {
-  // TODO: implement the two-sum solution.
-  return [];
+  // Implement your solution
+  return [0, 1];
 }
 
 const nums = [2, 7, 11, 15];
 const target = 9;
-console.log("Indices:", twoSum(nums, target));
+console.log(JSON.stringify(twoSum(nums, target)));
 `
   },
   {
@@ -105,16 +101,21 @@ console.log("Indices:", twoSum(nums, target));
     name: 'C (GCC 9.2.0)',
     monacoLang: 'c',
     extension: 'c',
-    starterCode: `// Collaborative Coding Interview - C
+    starterCode: `// Collaborative Coding Practice - C
 #include <stdio.h>
 
-void solve() {
-    int a = 5, b = 10;
-    printf("Collaborative C Execution: sum = %d\\n", a + b);
+void twoSum(int nums[], int n, int target, int result[]) {
+    // Implement your solution
+    result[0] = 0;
+    result[1] = 1;
 }
 
 int main() {
-    solve();
+    int nums[] = {2, 7, 11, 15};
+    int target = 9;
+    int result[2] = {0, 0};
+    twoSum(nums, 4, target, result);
+    printf("[%d,%d]\\n", result[0], result[1]);
     return 0;
 }
 `

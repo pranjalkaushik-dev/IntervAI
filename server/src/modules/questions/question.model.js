@@ -5,7 +5,14 @@ const questionSchema = new mongoose.Schema(
     interview: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Interview',
-      required: true,
+      required: false,
+      default: null,
+      index: true
+    },
+    companyId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
       index: true
     },
     createdBy: {
@@ -13,14 +20,33 @@ const questionSchema = new mongoose.Schema(
       ref: 'User',
       required: true
     },
+    title: {
+      type: String,
+      trim: true,
+      default: ''
+    },
+    isPublished: {
+      type: Boolean,
+      default: false,
+      index: true
+    },
+    isRepositoryQuestion: {
+      type: Boolean,
+      default: true,
+      index: true
+    },
+    tags: {
+      type: [String],
+      default: []
+    },
     source: {
       type: String,
-      enum: ['MANUAL', 'AI', 'AI_GENERATED', 'FALLBACK'],
+      enum: ['MANUAL', 'AI', 'AI_GENERATED', 'FALLBACK', 'CURATED'],
       default: 'MANUAL'
     },
     type: {
       type: String,
-      enum: ['CODING', 'MCQ', 'TEXT', 'SYSTEM_DESIGN'],
+      enum: ['CODING', 'MCQ', 'TEXT', 'THEORY', 'SYSTEM_DESIGN'],
       required: true
     },
     prompt: {
@@ -40,7 +66,7 @@ const questionSchema = new mongoose.Schema(
     },
     order: {
       type: Number,
-      required: true,
+      default: 1,
       min: 1
     },
 
@@ -105,7 +131,16 @@ const questionSchema = new mongoose.Schema(
   }
 );
 
-questionSchema.index({ interview: 1, order: 1 }, { unique: true });
+questionSchema.index(
+  { interview: 1, order: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { interview: { $type: 'objectId' } }
+  }
+);
+questionSchema.index({ companyId: 1, createdAt: -1 });
+questionSchema.index({ companyId: 1, isPublished: 1 });
+questionSchema.index({ isPublished: 1, createdAt: -1 });
 
 const Question = mongoose.model('Question', questionSchema);
 

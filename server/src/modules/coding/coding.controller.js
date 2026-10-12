@@ -1,4 +1,6 @@
+const mongoose = require('mongoose');
 const Submission = require('./submission.model');
+const PracticeSubmission = require('./practice-submission.model');
 const { getAiServiceHeaders } = require('../../shared/utils/ai-service.utils');
 const Question = require('../questions/question.model');
 const Interview = require('../interviews/interview.model');
@@ -28,6 +30,40 @@ const decodeBase64 = (str) => {
   } catch (e) {
     return str;
   }
+};
+
+const compareOutputs = (actual, expected) => {
+  const normActual = String(actual ?? '').trim();
+  const normExpected = String(expected ?? '').trim();
+
+  // If no expected output is defined, passing means program exited cleanly
+  if (!normExpected) return true;
+
+  // 1. Exact string match
+  if (normActual === normExpected) return true;
+
+  // 2. Whitespace-insensitive match (e.g. "[0, 1]" vs "[0,1]")
+  if (normActual.replace(/\s+/g, '') === normExpected.replace(/\s+/g, '')) {
+    return true;
+  }
+
+  // 3. JSON array / object match
+  try {
+    const parsedActual = JSON.parse(normActual);
+    const parsedExpected = JSON.parse(normExpected);
+    if (JSON.stringify(parsedActual) === JSON.stringify(parsedExpected)) {
+      return true;
+    }
+  } catch (_) {}
+
+  // 4. Case-insensitive boolean / null match (e.g. true vs True, false vs False)
+  if (normActual.toLowerCase() === normExpected.toLowerCase()) {
+    if (['true', 'false', 'null', 'none'].includes(normExpected.toLowerCase())) {
+      return true;
+    }
+  }
+
+  return false;
 };
 
 /**
@@ -153,7 +189,7 @@ const submitCode = async (req, res) => {
             const result = await executeJudge0({ sourceCode, languageId, stdin: tc.input ?? '' });
             const expected = String(tc.expectedOutput ?? tc.expected ?? '').trim();
             const actual = String(result.stdout || '').trim();
-            const passed = expected ? actual === expected && result.status?.id === 3 : result.status?.id === 3;
+            const passed = result.status?.id === 3 && compareOutputs(actual, expected);
             authoritativeResults.push({ testCaseId: tc.id || `case-${i + 1}`, input: tc.input ?? '', expectedOutput: expected, actualOutput: actual, passed, executionTime: result.time, memory: result.memory, error: result.stderr || result.compileOutput || '' });
           } catch (e) {
             authoritativeResults.push({ testCaseId: tc.id || `case-${i + 1}`, input: tc.input ?? '', expectedOutput: String(tc.expectedOutput ?? tc.expected ?? ''), actualOutput: '', passed: false, error: e.message });
@@ -331,9 +367,225 @@ const getSubmissionsByInterview = async (req, res) => {
   }
 };
 
+const canUserAccessQuestion = async (user, question) => {
+  if (!question) return false;
+  if (user.accountRole === 'ADMIN') return true;
+  if (question.isPublished) return true;
+  const isOwner = String(question.companyId || question.createdBy) === String(user._id);
+  if (isOwner) return true;
+  if (question.interview) {
+    const interview = await Interview.findById(question.interview).select('participants createdBy').lean();
+    if (interview) {
+      if (String(interview.createdBy) === String(user._id)) return true;
+      if ((interview.participants || []).some((p) => String(p.user) === String(user._id))) return true;
+    }
+  }
+  return false;
+};
+
+/**
+ * Execute practice code against custom input or sample tests
+ * POST /api/coding/practice/run
+ */
+const runPracticeCode = async (req, res) => {
+  try {
+    const { sourceCode, languageId, stdin, questionId } = req.body;
+
+    if (!sourceCode || !languageId) {
+      return sendError(res, 400, 'sourceCode and languageId are required');
+    }
+
+    if (questionId) {
+      const question = await Question.findById(questionId).lean();
+      if (!question) {
+        return sendError(res, 404, 'Question not found');
+      }
+      const allowed = await canUserAccessQuestion(req.user, question);
+      if (!allowed) {
+        return sendError(res, 403, 'You are not authorized to practice this question.');
+      }
+    }
+
+    const result = await executeJudge0({ sourceCode, languageId, stdin: stdin || '' });
+
+    return sendSuccess(res, 200, 'Practice code executed successfully', {
+      stdout: result.stdout,
+      stderr: result.stderr,
+      compileOutput: result.compileOutput,
+      status: result.status || {},
+      time: result.time || '0.0',
+      memory: result.memory || 0
+    });
+  } catch (error) {
+    return sendError(res, 500, `Practice execution error: ${error.message}`);
+  }
+};
+
+/**
+ * Submit practice code against permitted public sample tests
+ * POST /api/coding/practice/submit
+ */
+const submitPracticeCode = async (req, res) => {
+  try {
+    const { questionId, sourceCode, languageId, languageName } = req.body;
+
+    if (!questionId || !sourceCode || !languageId) {
+      return sendError(res, 400, 'questionId, sourceCode, and languageId are required');
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(questionId)) {
+      return sendError(res, 400, 'Invalid question ID format');
+    }
+
+    const question = await Question.findById(questionId).lean();
+    if (!question) {
+      return sendError(res, 404, 'Question not found');
+    }
+
+    const allowed = await canUserAccessQuestion(req.user, question);
+    if (!allowed) {
+      return sendError(res, 403, 'You are not authorized to submit practice for this question.');
+    }
+
+    // Configure test suite: prioritize configured testCases, fall back to examples.
+    let testCasesToRun = [];
+    if (Array.isArray(question.testCases) && question.testCases.length > 0) {
+      testCasesToRun = question.testCases.map((tc, idx) => ({
+        id: tc.id || `case-${idx + 1}`,
+        input: tc.input ?? '',
+        expected: tc.expectedOutput ?? tc.expected ?? '',
+        hidden: Boolean(tc.hidden || tc.isSecret)
+      }));
+    } else if (Array.isArray(question.examples) && question.examples.length > 0) {
+      testCasesToRun = question.examples.map((ex, idx) => ({
+        id: `example-${idx + 1}`,
+        input: ex.input ?? '',
+        expected: ex.output ?? ex.expected ?? ex.expectedOutput ?? '',
+        hidden: false
+      }));
+    } else {
+      testCasesToRun = [{ id: 'case-1', input: '', expected: '', hidden: false }];
+    }
+
+    // If explicit hiddenTests are defined separately, include them in the evaluation suite
+    if (Array.isArray(question.hiddenTests) && question.hiddenTests.length > 0) {
+      const hiddenList = question.hiddenTests.map((ht, idx) => ({
+        id: ht.id || `hidden-${idx + 1}`,
+        input: ht.input ?? '',
+        expected: ht.expectedOutput ?? ht.expected ?? '',
+        hidden: true
+      }));
+      testCasesToRun = testCasesToRun.concat(hiddenList);
+    }
+
+    const testResults = [];
+    let totalTime = 0;
+    let maxMemory = 0;
+
+    for (let i = 0; i < testCasesToRun.length; i++) {
+      const tc = testCasesToRun[i];
+      try {
+        const result = await executeJudge0({ sourceCode, languageId, stdin: tc.input || '' });
+        totalTime += parseFloat(result.time || 0);
+        maxMemory = Math.max(maxMemory, result.memory || 0);
+
+        const expected = String(tc.expected || '').trim();
+        const actual = String(result.stdout || '').trim();
+        const executionSuccess = result.status?.id === 3;
+        const passed = executionSuccess && compareOutputs(actual, expected);
+
+        const errorMsg = result.stderr || result.compileOutput || (result.status?.id && result.status?.id !== 3 ? result.status?.description : '') || '';
+
+        testResults.push({
+          testCaseId: tc.id,
+          input: tc.hidden ? '[Hidden Test Case]' : tc.input,
+          expectedOutput: tc.hidden ? '[Hidden]' : expected,
+          actualOutput: tc.hidden ? (passed ? '[Hidden - Passed]' : '[Hidden - Failed]') : actual,
+          passed,
+          hidden: Boolean(tc.hidden),
+          executionTime: result.time,
+          memory: result.memory,
+          error: errorMsg
+        });
+      } catch (e) {
+        testResults.push({
+          testCaseId: tc.id,
+          input: tc.hidden ? '[Hidden Test Case]' : tc.input,
+          expectedOutput: tc.hidden ? '[Hidden]' : tc.expected,
+          actualOutput: '',
+          passed: false,
+          hidden: Boolean(tc.hidden),
+          error: e.message
+        });
+      }
+    }
+
+    const passedCount = testResults.filter((t) => t.passed).length;
+    const score = testResults.length > 0 ? Math.round((passedCount / testResults.length) * 100) : 100;
+    let status = 'FAILED';
+    if (score === 100) status = 'PASSED';
+    else if (score > 0) status = 'PARTIAL';
+
+    const submission = await PracticeSubmission.create({
+      studentId: req.user._id,
+      questionId: question._id,
+      sourceCode,
+      languageId: Number(languageId),
+      languageName: languageName || 'javascript',
+      status,
+      score,
+      testResults,
+      executionTime: totalTime.toFixed(3),
+      memory: maxMemory
+    });
+
+    return sendSuccess(res, 200, 'Practice submission evaluated successfully', {
+      submission,
+      score,
+      status,
+      testResults,
+      passedCount,
+      totalCount: testResults.length
+    });
+  } catch (error) {
+    return sendError(res, 500, `Practice submission failed: ${error.message}`);
+  }
+};
+
+/**
+ * Fetch practice submission history for a specific question
+ * GET /api/coding/practice/submissions/:questionId
+ */
+const getPracticeSubmissions = async (req, res) => {
+  try {
+    const { questionId } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(questionId)) {
+      return sendError(res, 400, 'Invalid question ID format');
+    }
+
+    const submissions = await PracticeSubmission.find({
+      questionId,
+      studentId: req.user._id
+    })
+      .sort({ createdAt: -1 })
+      .limit(10)
+      .lean();
+
+    return sendSuccess(res, 200, 'Practice history fetched successfully', {
+      submissions,
+      count: submissions.length
+    });
+  } catch (error) {
+    return sendError(res, 500, `Failed to fetch practice history: ${error.message}`);
+  }
+};
+
 module.exports = {
   runCode,
   submitCode,
   getSupportedLanguages,
-  getSubmissionsByInterview
+  getSubmissionsByInterview,
+  runPracticeCode,
+  submitPracticeCode,
+  getPracticeSubmissions
 };

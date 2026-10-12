@@ -79,8 +79,8 @@ export default function InterviewsPage() {
   });
 
   return (
-    <div className="ia-page">
-      <div className="ia-page-head">
+    <div className="ia-page ia-panel-page">
+      <div className="ia-page-head ia-panel-head">
         <div>
           <h1>{isCompany || isAdmin ? 'Tests & Interviews' : 'My Tests'}</h1>
           <p>{isCompany || isAdmin ? 'Manage your scheduled and past interview sessions.' : 'View your upcoming interviews and past results.'}</p>
@@ -96,10 +96,10 @@ export default function InterviewsPage() {
         )}
       </div>
 
-      {error && <div className="ia-error">{error}</div>}
+      {error && <div className="ia-error shrink-0">{error}</div>}
 
-      <div className="ia-card">
-        <div className="ia-card-head">
+      <div className="ia-card ia-panel-card">
+        <div className="ia-card-head ia-panel-card-head">
           <div>
             <h3>All Interviews <span className="ia-count">{rows.length}</span></h3>
           </div>
@@ -115,9 +115,9 @@ export default function InterviewsPage() {
           <div className="ia-empty">Loading interviews...</div>
         ) : (
           isCompany || isAdmin ? (
-            <div className="ia-table-wrap">
+            <div className="ia-table-wrap ia-panel-table-wrap">
               <table className="ia-table">
-                <thead>
+                <thead className="sticky top-0 z-10 bg-[#F9FAFB] shadow-[0_1px_0_#E6E8EC]">
                   <tr>
                     <th>Title</th>
                     <th>Student</th>
@@ -167,7 +167,7 @@ export default function InterviewsPage() {
               </table>
             </div>
           ) : (
-            <div className="ia-session-list">
+            <div className="ia-session-list ia-panel-scrollable px-5 py-2">
               {rows.length === 0 ? (
                 <div className="ia-empty"><Calendar size={28} /><b>No interview sessions yet</b></div>
               ) : rows.map((x, i) => {

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard,
@@ -13,12 +13,15 @@ import {
   Sparkles,
   Building2,
   UserCog,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
 const studentItems = [
   { label: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
   { label: 'My Interviews', path: '/interviews', icon: Video },
+  { label: 'Question Bank', path: '/questions', icon: BookOpen },
   { label: 'Coding Rooms', path: '/rooms', icon: Code2 },
   { label: 'Mock Practice', path: '/practice', icon: Sparkles },
   { label: 'Performance Reports', path: '/reports', icon: FileText },
@@ -64,6 +67,26 @@ export default function AppShell({ children }) {
   const location = useLocation();
   const navigate = useNavigate();
 
+  const [isCollapsed, setIsCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem('intervai:sidebar_collapsed') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const toggleSidebar = () => {
+    setIsCollapsed((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem('intervai:sidebar_collapsed', String(next));
+      } catch {}
+      return next;
+    });
+  };
+
+  const isPanelPage = ['/questions', '/interviews', '/students'].includes(location.pathname);
+
   const items = isAdmin ? adminItems : isCompany ? companyItems : studentItems;
   const roleName = isAdmin ? 'Admin' : isCompany ? 'Company' : 'Candidate';
   const currentItem = items.find((item) => isActiveRoute(location, item.path));
@@ -76,61 +99,128 @@ export default function AppShell({ children }) {
   return (
     <div className="ref-app-shell">
       {/* Clean, Non-intrusive Sidebar */}
-      <aside className="ref-app-sidebar">
-        <Link to={isAdmin ? '/admin' : '/dashboard'} className="ref-app-brand">
-          <span className="ref-app-brand-mark">
-            <Code2 size={16} />
-          </span>
-          <span>
-            Interv<span>AI</span>
-          </span>
-        </Link>
+      <aside className={`ref-app-sidebar ${isCollapsed ? 'collapsed' : ''}`}>
+        <div className={`ref-app-brand-row ${isCollapsed ? 'collapsed' : ''}`}>
+          {!isCollapsed ? (
+            <>
+              <Link to={isAdmin ? '/admin' : '/dashboard'} className="ref-app-brand">
+                <span className="ref-app-brand-mark">
+                  <Code2 size={16} />
+                </span>
+                <span className="ref-app-brand-text">
+                  Interv<span>AI</span>
+                </span>
+              </Link>
 
-        <nav className="ref-app-nav">
-          <div className="ref-app-nav-label">
-            {isAdmin ? 'Administration' : isCompany ? 'Interview Platform' : 'Candidate Workspace'}
-          </div>
+              <button
+                type="button"
+                className="ref-app-sidebar-toggle"
+                onClick={toggleSidebar}
+                title="Collapse sidebar"
+                aria-label="Collapse sidebar"
+              >
+                <PanelLeftClose size={15} />
+              </button>
+            </>
+          ) : (
+            <div className="ref-app-brand-collapsed">
+              <Link
+                to={isAdmin ? '/admin' : '/dashboard'}
+                className="ref-app-brand-mark-link"
+                title="IntervAI Dashboard"
+                aria-label="IntervAI Dashboard"
+              >
+                <span className="ref-app-brand-mark">
+                  <Code2 size={16} />
+                </span>
+              </Link>
+              <button
+                type="button"
+                className="ref-app-sidebar-toggle"
+                onClick={toggleSidebar}
+                title="Expand sidebar"
+                aria-label="Expand sidebar"
+              >
+                <PanelLeftOpen size={15} />
+              </button>
+            </div>
+          )}
+        </div>
+
+        <nav className={`ref-app-nav ${isCollapsed ? 'collapsed' : ''}`}>
+          {!isCollapsed && (
+            <div className="ref-app-nav-label">
+              {isAdmin ? 'Administration' : isCompany ? 'Interview Platform' : 'Candidate Workspace'}
+            </div>
+          )}
           {items.map(({ label, path, icon: Icon }) => (
             <Link
               key={path}
               to={path}
-              className={`ref-app-nav-item ${isActiveRoute(location, path) ? 'active' : ''}`}
+              className={`ref-app-nav-item ${isActiveRoute(location, path) ? 'active' : ''} ${isCollapsed ? 'collapsed' : ''}`}
+              title={isCollapsed ? label : undefined}
+              aria-label={label}
             >
-              <Icon size={16} />
-              <span>{label}</span>
+              <Icon size={isCollapsed ? 18 : 16} className="shrink-0" />
+              {!isCollapsed && <span>{label}</span>}
             </Link>
           ))}
         </nav>
 
         {/* Compact Account Footer without decorative green banner */}
-        <div className="ref-app-sidebar-bottom">
-          <div className="p-2 mb-2 rounded-lg bg-slate-50 border border-slate-200/80 flex items-center justify-between">
-            <div className="min-w-0 pr-2">
-              <div className="text-xs font-semibold text-slate-900 truncate">
-                {user?.fullName || 'User'}
+        <div className={`ref-app-sidebar-bottom ${isCollapsed ? 'collapsed' : ''}`}>
+          {!isCollapsed ? (
+            <>
+              <div className="p-2 mb-2 rounded-lg bg-slate-50 border border-slate-200/80 flex items-center justify-between">
+                <div className="min-w-0 pr-2">
+                  <div className="text-xs font-semibold text-slate-900 truncate">
+                    {user?.fullName || 'User'}
+                  </div>
+                  <div className="text-[10px] text-slate-500 truncate">
+                    {roleName} &bull; {user?.email}
+                  </div>
+                </div>
+                <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200 shrink-0">
+                  {roleName}
+                </span>
               </div>
-              <div className="text-[10px] text-slate-500 truncate">
-                {roleName} &bull; {user?.email}
-              </div>
-            </div>
-            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200 shrink-0">
-              {roleName}
-            </span>
-          </div>
 
-          <button
-            type="button"
-            className="ref-app-nav-item hover:text-rose-600 hover:bg-rose-50 transition-colors"
-            onClick={handleLogout}
-          >
-            <LogOut size={15} />
-            <span>Sign Out</span>
-          </button>
+              <button
+                type="button"
+                className="ref-app-nav-item hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                onClick={handleLogout}
+              >
+                <LogOut size={15} />
+                <span>Sign Out</span>
+              </button>
+            </>
+          ) : (
+            <div className="flex flex-col items-center gap-2">
+              <button
+                type="button"
+                className="ref-app-avatar-chip"
+                onClick={() => navigate('/settings')}
+                title={`${user?.fullName || 'User'} (${roleName}) — Settings`}
+                aria-label="Account Settings"
+              >
+                <span className="ref-app-avatar small">{initials(user?.fullName)}</span>
+              </button>
+              <button
+                type="button"
+                className="ref-app-nav-item collapsed hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                onClick={handleLogout}
+                title="Sign Out"
+                aria-label="Sign Out"
+              >
+                <LogOut size={16} />
+              </button>
+            </div>
+          )}
         </div>
       </aside>
 
       {/* Main Content Area */}
-      <div className="ref-app-main">
+      <div className={`ref-app-main ${isPanelPage ? 'ref-app-main-fixed' : ''}`}>
         <header className="ref-app-topbar">
           <div className="ref-app-title-group">
             <strong>IntervAI</strong>
@@ -158,7 +248,7 @@ export default function AppShell({ children }) {
           </div>
         </header>
 
-        <main className="ref-app-content">{children}</main>
+        <main className={`ref-app-content ${isPanelPage ? 'ref-app-content-fit' : ''}`}>{children}</main>
       </div>
     </div>
   );

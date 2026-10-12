@@ -26,8 +26,8 @@ export default function CandidatesPage() {
   );
 
   return (
-    <div className="ia-page">
-      <div className="ia-page-head">
+    <div className="ia-page ia-panel-page">
+      <div className="ia-page-head ia-panel-head">
         <div>
           <h1>Candidate Directory</h1>
           <p>Review candidate profiles and assessment track records across your organization.</p>
@@ -42,8 +42,8 @@ export default function CandidatesPage() {
         </button>
       </div>
 
-      <div className="ia-card">
-        <div className="ia-card-head">
+      <div className="ia-card ia-panel-card">
+        <div className="ia-card-head ia-panel-card-head">
           <div>
             <h3>
               All Candidates{' '}
@@ -61,11 +61,11 @@ export default function CandidatesPage() {
           </div>
         </div>
 
-        {error && <div className="ia-error mb-4">{error}</div>}
+        {error && <div className="ia-error mb-4 shrink-0">{error}</div>}
 
-        <div className="ia-table-wrap">
+        <div className="ia-table-wrap ia-panel-table-wrap">
           <table className="ia-table">
-            <thead>
+            <thead className="sticky top-0 z-10 bg-[#F9FAFB] shadow-[0_1px_0_#E6E8EC]">
               <tr>
                 <th>Candidate</th>
                 <th>Email</th>
@@ -139,13 +139,13 @@ export default function CandidatesPage() {
           onClick={() => setSelectedCandidate(null)}
         >
           <div
-            className="bg-white rounded-2xl border border-[#DFE5EF] shadow-2xl w-full max-w-md overflow-hidden"
+            className="bg-white rounded-2xl border border-[#DFE5EF] shadow-2xl w-full max-w-md max-h-[calc(100vh-2rem)] flex flex-col overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Modal Header */}
-            <div className="p-6 border-b border-[#EEF2F8] flex items-center justify-between">
+            <div className="p-6 border-b border-[#EEF2F8] flex items-center justify-between shrink-0">
               <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-xl bg-[#EFF4FF] border border-[#DBEAFE] text-[#365FEA] font-bold text-base flex items-center justify-center">
+                <div className="w-12 h-12 rounded-xl bg-[#EFF4FF] border border-[#DBEAFE] text-[#365FEA] font-bold text-base flex items-center justify-center shrink-0">
                   {(selectedCandidate.fullName || 'U')
                     .split(' ')
                     .map((x) => x[0])
@@ -165,14 +165,14 @@ export default function CandidatesPage() {
               </div>
               <button
                 onClick={() => setSelectedCandidate(null)}
-                className="w-8 h-8 rounded-lg hover:bg-[#F5F7FB] text-[#596579] hover:text-[#172033] flex items-center justify-center transition-colors"
+                className="w-8 h-8 rounded-lg hover:bg-[#F5F7FB] text-[#596579] hover:text-[#172033] flex items-center justify-center transition-colors shrink-0"
               >
                 <X size={16} />
               </button>
             </div>
 
             {/* Modal Body */}
-            <div className="p-6 space-y-4 text-xs">
+            <div className="p-6 space-y-4 text-xs overflow-y-auto flex-1">
               <div className="grid grid-cols-2 gap-3">
                 <div className="p-3.5 rounded-xl bg-[#F8FAFC] border border-[#EEF2F8]">
                   <span className="text-[11px] font-semibold uppercase text-[#596579] block">
@@ -208,7 +208,7 @@ export default function CandidatesPage() {
             </div>
 
             {/* Modal Actions */}
-            <div className="p-4 bg-[#F8FAFC] border-t border-[#EEF2F8] flex items-center justify-end gap-2.5">
+            <div className="p-4 bg-[#F8FAFC] border-t border-[#EEF2F8] flex items-center justify-end gap-2.5 shrink-0">
               <button
                 type="button"
                 onClick={() => setSelectedCandidate(null)}

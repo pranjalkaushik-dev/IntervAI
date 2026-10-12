@@ -126,9 +126,9 @@ export default function AnalyticsPage() {
               </div>
             </div>
 
-            <div className="ia-table-wrap">
+            <div className="ia-table-wrap overflow-x-auto max-h-[500px] overflow-y-auto">
               <table className="ia-table">
-                <thead>
+                <thead className="sticky top-0 z-10 bg-[#F9FAFB] shadow-[0_1px_0_#E6E8EC]">
                   <tr>
                     <th>Candidate</th>
                     <th>Code Submissions</th>
