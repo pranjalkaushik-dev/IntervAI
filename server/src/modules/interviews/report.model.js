@@ -16,6 +16,7 @@ const interviewReportSchema = new mongoose.Schema({
   strengths: [{ type: String }],
   improvements: [{ type: String }],
   aiSummary: { type: String, default: '' },
+  aiSummaryStatus: { type: String, enum: ['COMPLETED', 'UNAVAILABLE'], default: 'UNAVAILABLE' },
   topicBreakdown: [{ topic: String, score: Number }],
   resumeSkills: [{ type: String }],
   systemDesignScore: { type: Number, default: null },

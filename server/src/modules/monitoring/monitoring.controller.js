@@ -24,6 +24,18 @@ const logViolation = async (req, res) => {
     if (!interview) {
       return sendError(res, 404, 'Interview session not found');
     }
+    const isStudentParticipant = interview.participants.some(
+      (participant) =>
+        String(participant.user) === String(req.user._id) &&
+        participant.role === 'STUDENT'
+    );
+    if (
+      req.user.accountRole !== 'STUDENT' ||
+      !isStudentParticipant ||
+      interview.status !== 'ACTIVE'
+    ) {
+      return sendError(res, 403, 'Monitoring events are only accepted from the active interview candidate');
+    }
 
     // Save violation log to MongoDB
     const violationLog = await ViolationLog.create({
@@ -58,7 +70,23 @@ const getInterviewViolations = async (req, res) => {
   try {
     const { interviewId } = req.params;
 
-    const violations = await ViolationLog.find({ interviewId })
+    const interview = await Interview.findById(interviewId)
+      .select('createdBy participants')
+      .lean();
+    if (!interview) {
+      return sendError(res, 404, 'Interview session not found');
+    }
+    const isOwner = String(interview.createdBy) === String(req.user._id);
+    const isParticipant = (interview.participants || []).some(
+      (participant) => String(participant.user) === String(req.user._id)
+    );
+    if (!isOwner && !isParticipant && req.user.accountRole !== 'ADMIN') {
+      return sendError(res, 403, 'You are not authorized to view monitoring events for this interview');
+    }
+
+    const filter = { interviewId };
+    if (req.user.accountRole === 'STUDENT') filter.studentId = req.user._id;
+    const violations = await ViolationLog.find(filter)
       .populate('studentId', 'fullName email avatarUrl')
       .sort({ timestamp: -1 });
 
@@ -101,7 +129,8 @@ const generateDualCamToken = async (req, res) => {
       type: 'DUAL_CAM_PAIRING'
     }, { expiresIn: '15m' });
 
-    const pairingBaseUrl = process.env.PUBLIC_CLIENT_URL || process.env.CLIENT_URL || 'http://localhost:5179';
+    const requestOrigin = req.get('origin') || (req.get('host') ? `${req.protocol || 'http'}://${req.get('host')}` : null);
+    const pairingBaseUrl = requestOrigin || process.env.PUBLIC_CLIENT_URL || process.env.CLIENT_URL || 'http://localhost:5179';
     const pairingUrl = `${pairingBaseUrl.replace(/\/$/, '')}/dual-camera?token=${encodeURIComponent(pairingToken)}&interview=${encodeURIComponent(interviewId)}`;
 
     return sendSuccess(res, 200, 'Dual-camera pairing token generated', {

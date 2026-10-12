@@ -1,5 +1,21 @@
 const Question = require('./question.model');
 const Interview = require('../interviews/interview.model');
+const { getAiServiceHeaders } = require('../../shared/utils/ai-service.utils');
+
+const sanitizeQuestionForClient = (question, allowPrivilegedFields = false) => {
+  if (!question || typeof question !== 'object') return question;
+  const safeQuestion = { ...question };
+
+  if (!allowPrivilegedFields) {
+    delete safeQuestion.referenceSolution;
+    delete safeQuestion.solution;
+    delete safeQuestion.hiddenTests;
+    delete safeQuestion.correctOptionIndex;
+    delete safeQuestion.testCases;
+  }
+
+  return safeQuestion;
+};
 
 const createQuestion = async (req, res) => {
   try {
@@ -16,7 +32,12 @@ const createQuestion = async (req, res) => {
       expectedKeywords,
       constraints,
       examples,
-      testCases
+      testCases,
+      starterCode,
+      driverCode,
+      referenceSolution,
+      solution,
+      hiddenTests
     } = req.body;
 
     if (!interview || !type || !prompt) {
@@ -45,7 +66,12 @@ const createQuestion = async (req, res) => {
       expectedKeywords,
       constraints,
       examples,
-      testCases
+      testCases,
+      starterCode: starterCode || driverCode || '',
+      driverCode: driverCode || starterCode || '',
+      referenceSolution: referenceSolution || solution || '',
+      solution: solution || referenceSolution || '',
+      hiddenTests: hiddenTests || []
     });
 
     return res.status(201).json({ success: true, message: 'Question created successfully', data: { question } });
@@ -69,10 +95,16 @@ const getQuestionsByInterview = async (req, res) => {
       || (interviewExists.participants || []).some((p) => String(p.user) === String(req.user._id))
       || req.user.accountRole === 'ADMIN';
     if (!allowed) return res.status(403).json({ success: false, message: 'You are not authorized to view these questions.' });
-    const questions = await Question.find({ interview: interviewId })
-      .sort({ order: 1 })
-      .select('-correctOptionIndex -testCases');
-    return res.status(200).json({ success: true, message: 'Questions fetched successfully', data: { questions } });
+
+    const isPrivilegedViewer = String(interviewExists.createdBy) === String(req.user._id)
+      || req.user.accountRole === 'ADMIN';
+
+    const questions = await Question.find({ interview: interviewId }).sort({ order: 1 }).lean();
+    return res.status(200).json({
+      success: true,
+      message: 'Questions fetched successfully',
+      data: { questions: questions.map((question) => sanitizeQuestionForClient(question, isPrivilegedViewer)) }
+    });
   } catch (error) {
     console.error('[Questions] Fetch error:', error);
     return res.status(500).json({ success: false, message: 'Failed to fetch questions' });
@@ -95,12 +127,18 @@ const deleteQuestion = async (req, res) => {
 
 const getQuestionById = async (req, res) => {
   try {
-    const question = await Question.findById(req.params.id).select('-correctOptionIndex -testCases').lean();
+    const question = await Question.findById(req.params.id).lean();
     if (!question) return res.status(404).json({ success: false, message: 'Question not found' });
     const interview = await Interview.findById(question.interview).select('createdBy participants').lean();
     const allowed = interview && (String(interview.createdBy) === String(req.user._id) || (interview.participants || []).some((p) => String(p.user) === String(req.user._id)) || req.user.accountRole === 'ADMIN');
     if (!allowed) return res.status(403).json({ success: false, message: 'You are not authorized to view this question.' });
-    return res.status(200).json({ success: true, message: 'Question fetched successfully', data: { question } });
+
+    const isPrivilegedViewer = String(interview.createdBy) === String(req.user._id) || req.user.accountRole === 'ADMIN';
+    return res.status(200).json({
+      success: true,
+      message: 'Question fetched successfully',
+      data: { question: sanitizeQuestionForClient(question, isPrivilegedViewer) }
+    });
   } catch (error) {
     return res.status(500).json({ success: false, message: 'Failed to fetch question' });
   }
@@ -112,9 +150,8 @@ const getQuestionLibrary = async (req, res) => {
     const interviewIds = interviews.map((x) => x._id);
     const questions = await Question.find({ createdBy: req.user._id, interview: { $in: interviewIds } })
       .sort({ createdAt: -1 })
-      .select('-correctOptionIndex -testCases')
       .lean();
-    return res.status(200).json({ success: true, data: { questions, count: questions.length } });
+    return res.status(200).json({ success: true, data: { questions: questions.map((question) => sanitizeQuestionForClient(question, true)), count: questions.length } });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -150,7 +187,12 @@ const bulkCreateQuestions = async (req, res) => {
       expectedKeywords: question.expectedKeywords || [],
       constraints: question.constraints,
       examples: question.examples,
-      testCases: question.testCases
+      testCases: question.testCases,
+      starterCode: question.starterCode || question.driverCode || '',
+      driverCode: question.driverCode || question.starterCode || '',
+      referenceSolution: question.referenceSolution || question.solution || '',
+      solution: question.solution || question.referenceSolution || '',
+      hiddenTests: question.hiddenTests || []
     }));
 
     const created = await Question.insertMany(docs);
@@ -171,7 +213,8 @@ const generateQuestionsWithAI = async (req, res) => {
 
     const aiResponse = await fetch(`${process.env.AI_MONITORING_URL || 'http://localhost:5050'}/api/ai/generate-questions`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAiServiceHeaders(),
+      signal: AbortSignal.timeout(30000),
       body: JSON.stringify({
         role,
         skills,
@@ -216,7 +259,12 @@ const generateQuestionsWithAI = async (req, res) => {
         expectedKeywords: question.expectedKeywords || [],
         constraints: question.constraints,
         examples: question.examples,
-        testCases: question.testCases
+        testCases: question.testCases,
+        starterCode: question.starterCode || question.driverCode || '',
+        driverCode: question.driverCode || question.starterCode || '',
+        referenceSolution: question.referenceSolution || question.solution || '',
+        solution: question.solution || question.referenceSolution || '',
+        hiddenTests: question.hiddenTests || []
       })));
     }
 
@@ -227,7 +275,7 @@ const generateQuestionsWithAI = async (req, res) => {
     });
   } catch (error) {
     console.error('[Questions] AI generation error:', error);
-    return res.status(502).json({ success: false, message: error.message || 'AI question generation service unavailable' });
+    return res.status(502).json({ success: false, message: 'AI question generation service unavailable. Please try again.' });
   }
 };
 

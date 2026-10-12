@@ -4,7 +4,7 @@ console.log("STARTING DIRECT GEMINI TEST...");
 
 try {
   const response = await gemini.models.generateContent({
-    model: "gemini-3.6-flash",
+    model: process.env.GEMINI_MODEL || "gemini-3-flash-preview",
     contents: "Reply with exactly: Gemini connection works",
   });
 

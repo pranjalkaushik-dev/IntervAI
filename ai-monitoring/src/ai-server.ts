@@ -1,5 +1,6 @@
 import "dotenv/config";
 import http from "node:http";
+import { z } from "zod";
 import { evaluateCodingSolution } from "./coding-evaluation/evaluator.js";
 import type { CodingTestResult } from "./coding-evaluation/types.js";
 import { generateAdaptiveInterviewStep } from "./interview-assistant/integration.js";
@@ -12,6 +13,7 @@ import { parseResumeTextWithAi } from "./resume-parser/parser.js";
 import { evaluateSystemDesignArchitecture } from "./system-design-evaluation/evaluator.js";
 
 const PORT = Number(process.env.AI_MONITORING_PORT || 5050);
+const AI_SERVICE_TOKEN = process.env.AI_SERVICE_TOKEN;
 
 interface CodingEvaluationBody {
   question?: string;
@@ -82,8 +84,10 @@ const server = http.createServer(async (req, res) => {
     sendJson(res, 200, {
       success: true,
       service: "ai-monitoring",
-      status: "OK",
+      status: geminiConfigured && AI_SERVICE_TOKEN ? "CONFIGURED" : "DEGRADED",
+      processStatus: "OK",
       geminiConfigured,
+      serviceAuthenticationConfigured: Boolean(AI_SERVICE_TOKEN),
     });
     return;
   }
@@ -102,6 +106,22 @@ const server = http.createServer(async (req, res) => {
     sendJson(res, 404, {
       success: false,
       message: "Route not found",
+    });
+    return;
+  }
+
+  if (!AI_SERVICE_TOKEN) {
+    sendJson(res, 503, {
+      success: false,
+      message: "AI service authentication is not configured.",
+    });
+    return;
+  }
+
+  if (req.headers.authorization !== `Bearer ${AI_SERVICE_TOKEN}`) {
+    sendJson(res, 401, {
+      success: false,
+      message: "AI service authentication failed.",
     });
     return;
   }
@@ -194,8 +214,8 @@ const server = http.createServer(async (req, res) => {
       const prompt = `You are an interview analytics assistant. Produce a concise, factual summary of an interview using only the supplied measurements. Do not make a hiring decision. Mention measured strengths, improvement areas, coding/test performance, communication, technical performance and integrity events. Return JSON with one field: summary.\nData:\n${JSON.stringify(finalBody)}`;
       const response = await llm.invoke(prompt);
       const raw = typeof response.content === 'string' ? response.content : JSON.stringify(response.content);
-      let summary = raw;
-      try { const clean = raw.replace(/^```json\s*/,'').replace(/```$/,'').trim(); summary = JSON.parse(clean).summary || clean; } catch (_) {}
+      const clean = raw.replace(/^```json\s*/,'').replace(/```$/,'').trim();
+      const { summary } = z.object({ summary: z.string().trim().min(1) }).parse(JSON.parse(clean));
       sendJson(res, 200, { success: true, data: { summary } });
       return;
     }
@@ -269,10 +289,7 @@ const server = http.createServer(async (req, res) => {
 
     sendJson(res, 503, {
       success: false,
-      message:
-        error instanceof Error
-          ? error.message
-          : "AI evaluation failed",
+      message: "AI request could not be completed. Please try again later.",
     });
   }
 });

@@ -17,6 +17,7 @@ const {
 } = require('./interview.status');
 const crypto = require('crypto');
 const path = require('path');
+const { getAiServiceHeaders } = require('../../shared/utils/ai-service.utils');
 
 const AI_SERVICE_URL = process.env.AI_MONITORING_URL || 'http://localhost:5050';
 
@@ -83,13 +84,13 @@ const fallbackQuestionsForMode = (mode) => {
   ];
 };
 
-const persistGeneratedQuestions = async ({ interviewId, userId, questions }) => {
+const persistGeneratedQuestions = async ({ interviewId, userId, questions, source = 'AI' }) => {
   const lastQuestion = await Question.findOne({ interview: interviewId }).sort({ order: -1 }).select('order').lean();
   let nextOrder = (lastQuestion?.order || 0) + 1;
   const docs = (questions || []).filter((q) => q?.prompt).map((q) => ({
     interview: interviewId,
     createdBy: userId,
-    source: 'AI',
+    source,
     type: q.type || 'TEXT',
     prompt: q.prompt || q.question,
     topic: q.topic || 'General',
@@ -99,6 +100,11 @@ const persistGeneratedQuestions = async ({ interviewId, userId, questions }) => 
     constraints: q.constraints || [],
     examples: q.examples || [],
     testCases: q.testCases || [],
+    starterCode: q.starterCode || q.driverCode || '',
+    driverCode: q.driverCode || q.starterCode || '',
+    referenceSolution: q.referenceSolution || q.solution || '',
+    solution: q.solution || q.referenceSolution || '',
+    hiddenTests: q.hiddenTests || [],
     options: q.options,
     correctOptionIndex: q.correctOptionIndex
   }));
@@ -110,7 +116,8 @@ const generateQuestionsFromAi = async ({ mode, numberOfQuestions, skills, role, 
   const config = MOCK_MODE_CONFIG[mode] || MOCK_MODE_CONFIG.MIXED;
   const aiResponse = await fetch(`${AI_SERVICE_URL}/api/ai/generate-questions`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: getAiServiceHeaders(),
+    signal: AbortSignal.timeout(30000),
     body: JSON.stringify({
       role: role || config.role,
       skills: (skills && skills.length ? skills : config.skills),
@@ -181,7 +188,12 @@ const createInterview = async (req, res) => {
         expectedKeywords: question.expectedKeywords || [],
         constraints: question.constraints || [],
         examples: question.examples || [],
-        testCases: question.testCases || []
+        testCases: question.testCases || [],
+        starterCode: question.starterCode || question.driverCode || '',
+        driverCode: question.driverCode || question.starterCode || '',
+        referenceSolution: question.referenceSolution || question.solution || '',
+        solution: question.solution || question.referenceSolution || '',
+        hiddenTests: question.hiddenTests || []
       });
     }
 
@@ -247,8 +259,14 @@ const createMockInterview = async (req, res) => {
     const saved = await persistGeneratedQuestions({
       interviewId: interview._id,
       userId: req.user._id,
-      questions
+      questions,
+      source: generationError ? 'FALLBACK' : 'AI'
     });
+    interview.aiGenerationStatus = generationError ? 'FALLBACK' : 'COMPLETED';
+    interview.aiGenerationMessage = generationError
+      ? 'AI question generation was unavailable; curated fallback questions were used.'
+      : '';
+    await interview.save();
 
     return sendSuccess(res, 201, generationError
       ? 'Mock interview created with fallback questions because AI generation failed.'
@@ -256,8 +274,7 @@ const createMockInterview = async (req, res) => {
       interview,
       questions: saved,
       mockMode: mode,
-      aiGenerationFailed: Boolean(generationError),
-      aiError: generationError
+      aiGenerationFailed: Boolean(generationError)
     });
   } catch (error) {
     return sendError(res, 500, error.message);
@@ -657,9 +674,10 @@ const recordAdaptiveTurn = async (req, res) => {
     const answerText = String(candidateAnswer || studentAnswer || '');
     const interview = await Interview.findById(req.params.id);
     if (!interview) return sendError(res, 404, 'Interview not found');
-    const participant = interview.participants.some((p) => String(p.user) === String(req.user._id));
     const owner = String(interview.createdBy) === String(req.user._id);
-    if (!participant && !owner) return sendError(res, 403, 'You are not a participant in this interview');
+    if (req.user.accountRole !== 'COMPANY' || !owner) {
+      return sendError(res, 403, 'Only the owning interviewer can save adaptive assistant results');
+    }
     interview.adaptiveTurns.push({ question, candidateAnswer: answerText, technicalScore, communicationScore, summary });
     await interview.save();
     return sendSuccess(res, 201, 'Adaptive interview turn saved', { turn: interview.adaptiveTurns[interview.adaptiveTurns.length - 1] });
@@ -674,9 +692,12 @@ const textSubmit = async (req, res) => {
 
     const interview = await Interview.findById(req.params.id);
     if (!interview) return sendError(res, 404, 'Interview not found');
-    const participant = interview.participants.some((p) => String(p.user) === String(req.user._id));
-    const owner = String(interview.createdBy) === String(req.user._id);
-    if (!participant && !owner) return sendError(res, 403, 'You are not a participant in this interview');
+    const isStudentParticipant = interview.participants.some(
+      (p) => String(p.user) === String(req.user._id) && p.role === 'STUDENT'
+    );
+    if (req.user.accountRole !== 'STUDENT' || !isStudentParticipant) {
+      return sendError(res, 403, 'Only the interview candidate can submit an answer');
+    }
 
     const answerDoc = await Answer.create({
       interview: interview._id,
@@ -713,7 +734,8 @@ const textSubmit = async (req, res) => {
       try {
         const aiResponse = await fetch(`${AI_SERVICE_URL}/api/ai/interview-assistant`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: getAiServiceHeaders(),
+          signal: AbortSignal.timeout(30000),
           body: JSON.stringify({
             currentQuestion: question,
             candidateAnswer: answerText,
@@ -760,19 +782,6 @@ const textSubmit = async (req, res) => {
             evaluationStatus: answerDoc.evaluationStatus
           }
         });
-        if (interview.roomCode) {
-          io.to(interview.roomCode).emit('answer:evaluated', {
-            answerId: answerDoc._id,
-            interviewId: interview._id,
-            evaluationStatus: answerDoc.evaluationStatus,
-            evaluation: {
-              technicalScore: answerDoc.technicalScore,
-              communicationScore: answerDoc.communicationScore,
-              summary: answerDoc.summary,
-              evaluationStatus: answerDoc.evaluationStatus
-            }
-          });
-        }
       }
     });
   } catch (error) {
@@ -801,7 +810,10 @@ const getAnswerById = async (req, res) => {
   try {
     const answer = await Answer.findOne({ _id: req.params.answerId, interview: req.params.id }).lean();
     if (!answer) return sendError(res, 404, 'Answer not found');
-    const allowed = String(answer.participant) === String(req.user._id) || req.user.accountRole === 'COMPANY' || req.user.accountRole === 'ADMIN';
+    const interview = await Interview.findById(req.params.id).select('createdBy').lean();
+    const allowed = String(answer.participant) === String(req.user._id)
+      || (req.user.accountRole === 'COMPANY' && String(interview?.createdBy) === String(req.user._id))
+      || req.user.accountRole === 'ADMIN';
     if (!allowed) return sendError(res, 403, 'You are not allowed to view this answer');
     return sendSuccess(res, 200, 'Answer retrieved', { answer });
   } catch (error) {
@@ -885,10 +897,12 @@ const buildAndSaveReport = async (interview) => {
   if (violations.length === 0) strengths.push('No persisted integrity events were recorded.');
   else improvements.push(`Review ${violations.length} recorded integrity event(s).`);
   let aiSummary = `Interview completed with an overall measured score of ${overallScore}/100. ${strengths[0] || 'Continue practicing with structured technical interviews.'} ${improvements[0] || 'Maintain consistency across technical and coding questions.'}`;
+  let aiSummaryStatus = 'UNAVAILABLE';
   try {
     const aiResponse = await fetch(`${AI_SERVICE_URL}/api/ai/final-report`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAiServiceHeaders(),
+      signal: AbortSignal.timeout(30000),
       body: JSON.stringify({
         title: interview.title,
         technicalScore,
@@ -902,8 +916,13 @@ const buildAndSaveReport = async (interview) => {
       })
     });
     const aiResult = await aiResponse.json();
-    if (aiResponse.ok && aiResult.success && aiResult.data?.summary) aiSummary = aiResult.data.summary;
-  } catch (_) {}
+    if (aiResponse.ok && aiResult.success && typeof aiResult.data?.summary === 'string' && aiResult.data.summary.trim()) {
+      aiSummary = aiResult.data.summary.trim();
+      aiSummaryStatus = 'COMPLETED';
+    }
+  } catch (error) {
+    console.warn('[Interview Report] AI summary unavailable:', error.message);
+  }
   const systemDesignDoc = await SystemDesign.findOne({ interviewId: interview._id }).lean();
   if (systemDesignDoc?.aiEvaluation?.summary) aiSummary += ` System Design Evaluation: ${systemDesignDoc.aiEvaluation.summary}`;
 
@@ -925,6 +944,7 @@ const buildAndSaveReport = async (interview) => {
       strengths,
       improvements,
       aiSummary,
+      aiSummaryStatus,
       topicBreakdown,
       resumeSkills: interview.studentResume?.skills || [],
       systemDesignScore: systemDesignDoc?.aiEvaluation?.overallScore || null,
@@ -1019,20 +1039,24 @@ const uploadResumeFile = async (req, res) => {
       education: [],
       experience: []
     };
+    let aiParsingStatus = 'FAILED';
+    let aiParsingMessage = 'Resume was saved, but AI extraction is unavailable.';
 
     try {
       const aiResponse = await fetch(`${process.env.AI_MONITORING_URL || 'http://localhost:5050'}/api/ai/parse-resume`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAiServiceHeaders(),
+        signal: AbortSignal.timeout(30000),
         body: JSON.stringify({ text: extractedText })
       });
 
-      if (aiResponse.ok) {
-        const aiResult = await aiResponse.json();
-        if (aiResult.success && aiResult.data?.resume) {
-          parsedResume = { ...parsedResume, ...aiResult.data.resume };
-        }
+      const aiResult = await aiResponse.json();
+      if (!aiResponse.ok || !aiResult.success || !aiResult.data?.resume) {
+        throw new Error('AI resume parsing did not return structured data');
       }
+      parsedResume = { ...parsedResume, ...aiResult.data.resume };
+      aiParsingStatus = 'COMPLETED';
+      aiParsingMessage = '';
     } catch (aiErr) {
       console.warn('[Resume AI Parser Warning]:', aiErr.message);
     }
@@ -1050,15 +1074,17 @@ const uploadResumeFile = async (req, res) => {
       projects: Array.isArray(parsedResume.projects) ? parsedResume.projects.slice(0, 30) : [],
       education: Array.isArray(parsedResume.education) ? parsedResume.education.slice(0, 20) : [],
       experience: Array.isArray(parsedResume.experience) ? parsedResume.experience.slice(0, 30) : [],
+      aiParsingStatus,
+      aiParsingMessage,
       uploadedAt: new Date()
     };
 
     await interview.save();
 
     // Auto-generate questions for AI mock interviews only when the selected mode is PROJECT or MIXED.
-    if (interview.title.includes('AI Mock Interview') && ['PROJECT', 'MIXED'].includes(interview.mockMode) && (parsedResume.skills?.length > 0 || parsedResume.projects?.length > 0)) {
+    if (aiParsingStatus === 'COMPLETED' && interview.title.includes('AI Mock Interview') && ['PROJECT', 'MIXED'].includes(interview.mockMode) && (parsedResume.skills?.length > 0 || parsedResume.projects?.length > 0)) {
       try {
-        const skills = [...(parsedResume.skills || []), ...(parsedResume.technologies || [])].filter(Boolean);
+        const skills = [...(parsedResume.skills || []), ...(parsedResume.technologies || []), ...(parsedResume.projects || [])].filter(Boolean);
         const generated = await generateQuestionsFromAi({
           mode: interview.mockMode,
           numberOfQuestions: 3,
@@ -1072,7 +1098,11 @@ const uploadResumeFile = async (req, res) => {
       }
     }
 
-    return sendSuccess(res, 200, 'Resume uploaded and processed successfully', {
+    return sendSuccess(res, 200, aiParsingStatus === 'COMPLETED'
+      ? 'Resume uploaded and parsed successfully'
+      : 'Resume uploaded, but AI extraction is unavailable', {
+      aiParsingStatus,
+      aiParsingMessage,
       resume: interview.studentResume
     });
   } catch (error) {
@@ -1112,12 +1142,14 @@ const generateResumeQuestions = async (req, res) => {
       return sendError(res, 400, 'No student resume skills or projects found. Please upload a resume first.');
     }
 
+    const questionSkills = (skills.length ? skills : projects).slice(0, 5);
     const aiResponse = await fetch(`${process.env.AI_MONITORING_URL || 'http://localhost:5050'}/api/ai/generate-questions`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAiServiceHeaders(),
+      signal: AbortSignal.timeout(30000),
       body: JSON.stringify({
         role: `Student with projects: ${projects.slice(0, 2).join(', ')}`,
-        skills: skills.slice(0, 5),
+        skills: questionSkills,
         difficulty: 'MEDIUM',
         type: 'TEXT',
         numberOfQuestions: 3,
@@ -1197,7 +1229,15 @@ const saveSystemDesignState = async (req, res) => {
  */
 const getSystemDesignState = async (req, res) => {
   try {
-    const doc = await SystemDesign.findOne({ interviewId: req.params.id }).lean();
+    const interview = await Interview.findById(req.params.id).select('createdBy participants').lean();
+    if (!interview) return sendError(res, 404, 'Interview not found');
+    const allowed = String(interview.createdBy) === String(req.user._id)
+      || (interview.participants || []).some((p) => String(p.user) === String(req.user._id))
+      || req.user.accountRole === 'ADMIN';
+    if (!allowed) return sendError(res, 403, 'You are not allowed to view this system design');
+    const filter = { interviewId: req.params.id };
+    if (req.user.accountRole === 'STUDENT') filter.studentId = req.user._id;
+    const doc = await SystemDesign.findOne(filter).lean();
     return sendSuccess(res, 200, 'System design state fetched', { systemDesign: doc || null });
   } catch (error) {
     return sendError(res, 500, error.message);
@@ -1214,18 +1254,29 @@ const submitSystemDesign = async (req, res) => {
     const interview = await Interview.findById(req.params.id);
     if (!interview) return sendError(res, 404, 'Interview not found');
 
+    const isStudentParticipant = interview.participants.some(
+      (p) => String(p.user) === String(req.user._id) && p.role === 'STUDENT'
+    );
+    const isStudentOwner = String(interview.createdBy) === String(req.user._id)
+      && req.user.accountRole === 'STUDENT';
+    if (req.user.accountRole !== 'STUDENT' || (!isStudentParticipant && !isStudentOwner)) {
+      return sendError(res, 403, 'Only the interview candidate can submit a system design');
+    }
+
     const studentId = req.user._id;
 
     let aiEvaluation = null;
+    let aiEvaluationStatus = 'FAILED';
     try {
       const aiResponse = await fetch(`${process.env.AI_MONITORING_URL || 'http://localhost:5050'}/api/ai/system-design-evaluation`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAiServiceHeaders(),
+        signal: AbortSignal.timeout(30000),
         body: JSON.stringify({
           questionPrompt: questionPrompt || 'Design a scalable distributed architecture',
           nodes: Array.isArray(nodes) ? nodes : [],
           edges: Array.isArray(edges) ? edges : [],
-          studentNotes: diagramNotes || ''
+          candidateNotes: diagramNotes || ''
         })
       });
 
@@ -1233,6 +1284,7 @@ const submitSystemDesign = async (req, res) => {
         const aiResult = await aiResponse.json();
         if (aiResult.success && aiResult.data?.evaluation) {
           aiEvaluation = aiResult.data.evaluation;
+          aiEvaluationStatus = 'COMPLETED';
         }
       }
     } catch (aiErr) {
@@ -1250,15 +1302,23 @@ const submitSystemDesign = async (req, res) => {
         edges: Array.isArray(edges) ? edges : [],
         diagramNotes: String(diagramNotes || '').slice(0, 10000),
         aiEvaluation,
+        aiEvaluationStatus,
         isSubmitted: true,
         submittedAt: new Date()
       },
       { new: true, upsert: true, setDefaultsOnInsert: true }
     );
 
-    return sendSuccess(res, 200, 'System design architecture submitted successfully', {
+    return sendSuccess(
+      res,
+      200,
+      aiEvaluationStatus === 'COMPLETED'
+        ? 'System design submitted and evaluated successfully'
+        : 'System design was saved, but AI evaluation is unavailable',
+      {
       systemDesign: doc
-    });
+      }
+    );
   } catch (error) {
     return sendError(res, 500, error.message);
   }
@@ -1270,9 +1330,21 @@ const submitSystemDesign = async (req, res) => {
  */
 const getSystemDesignEvaluation = async (req, res) => {
   try {
-    const doc = await SystemDesign.findOne({ interviewId: req.params.id }).select('aiEvaluation nodes edges diagramNotes submittedAt').lean();
+    const interview = await Interview.findById(req.params.id).select('createdBy participants').lean();
+    if (!interview) return sendError(res, 404, 'Interview not found');
+    const allowed = String(interview.createdBy) === String(req.user._id)
+      || (interview.participants || []).some((p) => String(p.user) === String(req.user._id))
+      || req.user.accountRole === 'ADMIN';
+    if (!allowed) return sendError(res, 403, 'You are not allowed to view this system design');
+    const filter = { interviewId: req.params.id };
+    if (req.user.accountRole === 'STUDENT') filter.studentId = req.user._id;
+    const doc = await SystemDesign.findOne(filter).select('aiEvaluation aiEvaluationStatus nodes edges diagramNotes submittedAt').lean();
     if (!doc) return sendError(res, 404, 'No system design submission found');
-    return sendSuccess(res, 200, 'System design evaluation fetched', { evaluation: doc.aiEvaluation, systemDesign: doc });
+    return sendSuccess(res, 200, 'System design evaluation fetched', {
+      evaluation: doc.aiEvaluation,
+      evaluationStatus: doc.aiEvaluationStatus || (doc.aiEvaluation ? 'COMPLETED' : 'NOT_SUBMITTED'),
+      systemDesign: doc
+    });
   } catch (error) {
     return sendError(res, 500, error.message);
   }

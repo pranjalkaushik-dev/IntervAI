@@ -97,6 +97,12 @@ const interviewSchema = new mongoose.Schema(
       projects: [{ type: String }],
       education: [{ type: String }],
       experience: [{ type: String }],
+      aiParsingStatus: {
+        type: String,
+        enum: ['NOT_RUN', 'COMPLETED', 'FAILED'],
+        default: 'NOT_RUN'
+      },
+      aiParsingMessage: { type: String, default: '' },
       uploadedAt: { type: Date, default: null }
     },
     adaptiveTurns: [{
@@ -106,7 +112,13 @@ const interviewSchema = new mongoose.Schema(
       communicationScore: Number,
       summary: String,
       createdAt: { type: Date, default: Date.now }
-    }]
+    }],
+    aiGenerationStatus: {
+      type: String,
+      enum: ['NOT_REQUESTED', 'COMPLETED', 'FALLBACK'],
+      default: 'NOT_REQUESTED'
+    },
+    aiGenerationMessage: { type: String, default: '' }
   },
   {
     timestamps: true

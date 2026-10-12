@@ -1,4 +1,5 @@
 const Submission = require('./submission.model');
+const { getAiServiceHeaders } = require('../../shared/utils/ai-service.utils');
 const Question = require('../questions/question.model');
 const Interview = require('../interviews/interview.model');
 
@@ -111,8 +112,7 @@ const submitCode = async (req, res) => {
       sourceCode,
       languageId,
       languageName,
-      testResults,
-      aiFeedback
+      testResults
     } = req.body;
 
     if (!interviewId || !sourceCode || !languageId) {
@@ -162,19 +162,18 @@ const submitCode = async (req, res) => {
       }
     }
 
-    let generatedAiFeedback = aiFeedback || {};
+    let generatedAiFeedback = {};
+    let aiFeedbackStatus = 'UNAVAILABLE';
 
-    // Generate AI coding feedback server-side when the caller
-    // has not already supplied an evaluation.
-    if (!aiFeedback && sourceCode) {
+    // Generate AI feedback server-side from authoritative test results.
+    if (sourceCode) {
       try {
         const aiResponse = await fetch(
           `${AI_MONITORING_URL}/api/ai/coding-evaluation`,
           {
             method: 'POST',
-            headers: {
-              'Content-Type': 'application/json'
-            },
+            headers: getAiServiceHeaders(),
+            signal: AbortSignal.timeout(30000),
             body: JSON.stringify({
               question:
                 req.body.question ||
@@ -191,6 +190,7 @@ const submitCode = async (req, res) => {
 
           if (aiResult.success && aiResult.data?.aiFeedback) {
             generatedAiFeedback = aiResult.data.aiFeedback;
+            aiFeedbackStatus = 'COMPLETED';
           }
         } else {
           console.warn(
@@ -235,7 +235,8 @@ const submitCode = async (req, res) => {
       status,
       score,
       testResults: authoritativeResults || [],
-      aiFeedback: generatedAiFeedback
+      aiFeedback: generatedAiFeedback,
+      aiFeedbackStatus
     });
 
     return sendSuccess(
@@ -253,6 +254,7 @@ const submitCode = async (req, res) => {
         score: submission.score,
         testResults: submission.testResults,
         aiFeedback: submission.aiFeedback,
+        aiFeedbackStatus: submission.aiFeedbackStatus,
         submittedAt: submission.submittedAt
       }
     );

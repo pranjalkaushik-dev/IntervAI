@@ -1,8 +1,10 @@
+const dotenv = require('dotenv');
+dotenv.config();
+
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
-const dotenv = require('dotenv');
 const connectDB = require('./config/db');
 const errorHandler = require('./shared/middlewares/error.middleware');
 const { verifyToken } = require('./shared/utils/jwt.utils');
@@ -18,8 +20,6 @@ const codingRoutes = require('./modules/coding/coding.routes');
 const aiRoutes = require('./modules/ai/ai.routes');
 const questionRoutes = require('./modules/questions/question.routes');
 const adminRoutes = require('./modules/admin/admin.routes');
-
-dotenv.config();
 
 // Connect to MongoDB
 connectDB();
@@ -47,7 +47,17 @@ const isAllowedOrigin = (origin) => {
   if (process.env.ALLOW_LAN_ORIGINS === 'false') return false;
   try {
     const url = new URL(origin);
-    return isPrivateLanHost(url.hostname);
+    if (isPrivateLanHost(url.hostname)) return true;
+    if (
+      url.hostname.endsWith('.serveousercontent.com') ||
+      url.hostname.endsWith('.loca.lt') ||
+      url.hostname.endsWith('.ngrok-free.app') ||
+      url.hostname.endsWith('.pinggy.net') ||
+      url.hostname.endsWith('.pinggy-free.link')
+    ) {
+      return true;
+    }
+    return false;
   } catch (_) {
     return false;
   }
@@ -110,25 +120,25 @@ const roomTokenMap = new Map();
 // Socket.IO Authentication Middleware (Secures all socket events)
 io.use(async (socket, next) => {
   try {
+    const pairingToken = socket.handshake.auth?.pairingToken;
+    if (pairingToken) {
+      console.log('[Socket.IO] Authenticating dual camera pairing token (len:', pairingToken.length, ')');
+      const decoded = verifyToken(pairingToken);
+      const pairedStudentId = decoded?.studentId || decoded?.candidateId;
+      if (decoded?.type !== 'DUAL_CAM_PAIRING' || !pairedStudentId || !decoded?.interviewId) {
+        return next(new Error('Authentication error: Invalid dual-camera pairing token'));
+      }
+      socket.user = { _id: pairedStudentId, accountRole: 'SECONDARY_CAM', fullName: 'Secondary Camera' };
+      socket.isDualCam = true;
+      socket.pairingInterviewId = String(decoded.interviewId);
+      console.log('[Socket.IO] Dual camera authenticated successfully for interview:', decoded.interviewId);
+      return next();
+    }
+
     const token =
       socket.handshake.auth?.token || socket.handshake.headers?.authorization?.split(' ')[1];
 
     if (!token) {
-      if (socket.handshake.auth?.pairingToken) {
-        const decoded = verifyToken(socket.handshake.auth.pairingToken);
-        const pairedStudentId = decoded?.studentId || decoded?.candidateId;
-        if (decoded?.type !== 'DUAL_CAM_PAIRING' || !pairedStudentId || !decoded?.interviewId) {
-          return next(new Error('Authentication error: Invalid dual-camera pairing token'));
-        }
-        socket.user = { _id: pairedStudentId, accountRole: 'SECONDARY_CAM', fullName: 'Secondary Camera' };
-        socket.isDualCam = true;
-        socket.pairingInterviewId = String(decoded.interviewId);
-        return next();
-      }
-
-      // Never create guest sockets for application users. A socket used by the
-      // interview/proctoring flow must carry a real JWT so every persisted event
-      // can be associated with a real MongoDB User._id.
       return next(new Error('Authentication required'));
     }
 
@@ -153,7 +163,8 @@ io.use(async (socket, next) => {
     socket.user = user;
     next();
   } catch (err) {
-    next(new Error('Authentication error: Token validation failed'));
+    console.warn('[Socket.IO] Auth verification error:', err.message);
+    next(new Error(`Authentication error: ${err.message}`));
   }
 });
 
@@ -334,6 +345,27 @@ io.on('connection', (socket) => {
         socket.emit('error-event', { message: 'Invalid interview ID for monitoring event' });
         return;
       }
+      const Interview = require('./modules/interviews/interview.model');
+      const interview = await Interview.findById(interviewId)
+        .select('roomCode status participants')
+        .lean();
+      const isStudentParticipant = interview?.participants?.some(
+        (participant) =>
+          String(participant.user) === String(studentId) &&
+          participant.role === 'STUDENT'
+      );
+      if (
+        socket.user.accountRole !== 'STUDENT' ||
+        !isStudentParticipant ||
+        interview.status !== 'ACTIVE' ||
+        socket.currentRoom !== interview.roomCode ||
+        !socket.rooms.has(interview.roomCode)
+      ) {
+        socket.emit('error-event', {
+          message: 'Monitoring event was not accepted for this interview.'
+        });
+        return;
+      }
       const normalizedViolationType = ({
         TAB_SWITCH_DETECTED: 'TAB_HIDDEN',
         NO_FACE: 'NO_FACE',
@@ -372,7 +404,7 @@ io.on('connection', (socket) => {
         return;
       }
 
-      io.to(socket.currentRoom || interviewId).emit('violation-alert', {
+      io.to(interview.roomCode).emit('violation-alert', {
         logId: violationLog._id,
         studentId,
         studentName: socket.user.fullName,

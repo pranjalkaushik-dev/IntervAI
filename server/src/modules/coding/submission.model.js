@@ -61,6 +61,11 @@ const submissionSchema = new mongoose.Schema(
       summary: { type: String, default: null },
       suggestions: [{ type: String }]
     },
+    aiFeedbackStatus: {
+      type: String,
+      enum: ['COMPLETED', 'UNAVAILABLE'],
+      default: 'UNAVAILABLE'
+    },
     submittedAt: {
       type: Date,
       default: Date.now

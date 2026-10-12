@@ -15,7 +15,7 @@ const questionSchema = new mongoose.Schema(
     },
     source: {
       type: String,
-      enum: ['MANUAL', 'AI', 'AI_GENERATED'],
+      enum: ['MANUAL', 'AI', 'AI_GENERATED', 'FALLBACK'],
       default: 'MANUAL'
     },
     type: {
@@ -70,6 +70,26 @@ const questionSchema = new mongoose.Schema(
       default: undefined
     },
     testCases: {
+      type: [mongoose.Schema.Types.Mixed],
+      default: undefined
+    },
+    starterCode: {
+      type: String,
+      default: ''
+    },
+    driverCode: {
+      type: String,
+      default: ''
+    },
+    solution: {
+      type: String,
+      default: ''
+    },
+    referenceSolution: {
+      type: String,
+      default: ''
+    },
+    hiddenTests: {
       type: [mongoose.Schema.Types.Mixed],
       default: undefined
     },

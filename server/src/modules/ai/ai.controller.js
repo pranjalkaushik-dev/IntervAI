@@ -1,4 +1,5 @@
 const { sendSuccess, sendError } = require('../../shared/utils/response.utils');
+const { getAiServiceHeaders } = require('../../shared/utils/ai-service.utils');
 
 const AI_MONITORING_URL =
   process.env.AI_MONITORING_URL || 'http://localhost:5050';
@@ -31,9 +32,8 @@ const interviewAssistant = async (req, res) => {
       `${AI_MONITORING_URL}/api/ai/interview-assistant`,
       {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
+        headers: getAiServiceHeaders(),
+        signal: AbortSignal.timeout(30000),
         body: JSON.stringify({
           currentQuestion,
           candidateAnswer,

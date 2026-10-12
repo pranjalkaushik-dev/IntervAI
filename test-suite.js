@@ -234,7 +234,7 @@ async function main() {
 
       // Socket tests use the same real identities and the persisted room; no fake JWTs.
       try {
-        const { io } = require('./client/node_modules/socket.io-client');
+        const { io } = require('./frontend/node_modules/socket.io-client');
         const room = await request(`${SERVER_URL}/api/interviews`, { headers: authHeaders(company.token) });
         const ownInterviews = room.body?.data?.interviews || [];
         const testInterview = ownInterviews.find((item) => item.status === 'COMPLETED') || ownInterviews[0];
@@ -284,7 +284,7 @@ async function main() {
     if (response.ok) pass('Frontend dev server', FRONTEND_URL);
     else fail('Frontend dev server', `HTTP ${response.status}`);
   } else {
-    blocked('Frontend runtime/build', 'No frontend server is running. Run npm ci then npm run build/dev in client/.');
+    blocked('Frontend runtime/build', 'No frontend server is running. Run npm ci then npm run build/dev in frontend/.');
   }
 
   // Browser/device tests cannot be honestly completed by this Node-only runner.

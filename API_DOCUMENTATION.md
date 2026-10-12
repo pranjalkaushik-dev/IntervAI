@@ -56,6 +56,14 @@ Tokens are obtained via the `/api/auth/login` or `/api/auth/register` endpoints.
 | `GET` | `/api/interviews/analytics` | Company | Retrieve platform-wide aggregate performance metrics. |
 | `POST` | `/api/interviews/:id/system-design/state` | Private | Save whiteboard nodes, edges, and notes. |
 | `GET` | `/api/interviews/:id/system-design/state` | Private | Retrieve persisted whiteboard architecture state. |
+| `POST` | `/api/interviews/:id/system-design/submit` | Interview candidate | Save architecture and request AI evaluation; response includes `aiEvaluationStatus` (`COMPLETED` or `FAILED`). |
+| `POST` | `/api/interviews/:id/text-submit` | Interview candidate | Save answer, asynchronously evaluate it, and receive `answer:evaluated` with `COMPLETED` or `FAILED` status. |
+| `POST` | `/api/interviews/:id/adaptive-turn` | Owning interviewer | Persist the interviewer assistant's evaluated answer turn. |
+| `POST` | `/api/interviews/:id/resume/upload` | Interview participant | Save an uploaded resume; response includes `aiParsingStatus`. |
+| `POST` | `/api/interviews/:id/resume/generate-questions` | Owning company | Generate and persist resume-based questions. |
+| `GET` | `/api/interviews/:id/report` | Private participant | Retrieve persisted interview metrics and AI-summary status. |
+| `POST` | `/api/interviews/:id/report/generate` | Owning company/admin | Generate measured report metrics and attempt an AI summary. |
+| `POST` | `/api/ai/interview-assistant` | Authenticated user | Evaluate an answer and return an adaptive follow-up; the caller persists the evaluated turn separately. |
 
 ---
 
@@ -85,6 +93,7 @@ Tokens are obtained via the `/api/auth/login` or `/api/auth/register` endpoints.
 |---|---|---|---|
 | `GET` | `/api/questions/library` | Company | List global and reusable question library. |
 | `POST` | `/api/questions` | Company | Create a new interview question (CODING, MCQ, TEXT, SYSTEM_DESIGN). |
+| `POST` | `/api/questions/generate-ai` | Company | Generate questions using Gemini; optionally save them to an owned interview. |
 | `POST` | `/api/questions/bulk` | Company | Batch create multiple questions. |
 | `GET` | `/api/questions/interview/:interviewId` | Private | Fetch all questions attached to an interview. |
 | `GET` | `/api/questions/:id` | Private | Fetch a single question by ID. |
@@ -104,9 +113,11 @@ Tokens are obtained via the `/api/auth/login` or `/api/auth/register` endpoints.
 
 ### 6. AI Monitoring Engine (`http://localhost:5050`)
 
+The engine is an internal backend dependency. Every `/api/ai/*` request requires `Authorization: Bearer <AI_SERVICE_TOKEN>`; configure the same unpredictable token in `server/.env` and `ai-monitoring/.env`. Do not expose this token or call the AI engine directly from the browser. `/health` is public and reports configuration presence only; it does not prove that Gemini is reachable or that an AI workflow completed.
+
 | Method | Endpoint | Description |
 |---|---|---|
-| `GET` | `/health` | Check service health and Gemini API key availability. |
+| `GET` | `/health` | Report process state and whether Gemini/service authentication configuration is present. |
 | `POST` | `/api/ai/generate-questions` | Generate interview questions matching role, skills, mode, and difficulty. |
 | `POST` | `/api/ai/coding-evaluation` | Qualitative AI evaluation of submitted code and test performance. |
 | `POST` | `/api/ai/interview-assistant` | Contextual adaptive follow-up generator based on candidate answers. |
@@ -137,7 +148,7 @@ const socket = io('http://localhost:5001', {
 | `chat:message` | `{ roomId: string, text: string }` | Send an in-room real-time chat message. |
 | `question:change` | `{ roomId: string, questionIndex: number }` | Interviewer synchronizes active question view. |
 | `system-design:change` | `{ roomId, nodes, edges, diagramNotes }` | Synchronize whiteboard canvas elements. |
-| `monitoring:violation` | `{ interviewId, violationType, severity, metadata }` | Stream and persist CV/browser proctoring violation. |
+| `monitoring:violation` | `{ interviewId, violationType, severity, metadata }` | Active interview candidate reports a detected CV/browser visibility event; backend validates participant, room, and interview status before persistence. |
 | `webrtc:offer` | `{ to: string, offer: RTCSessionDescriptionInit }` | WebRTC audio/video signaling offer. |
 | `webrtc:answer` | `{ to: string, answer: RTCSessionDescriptionInit }` | WebRTC audio/video signaling answer. |
 | `webrtc:ice-candidate`| `{ to: string, candidate: RTCIceCandidate }` | WebRTC ICE candidate exchange. |

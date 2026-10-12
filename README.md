@@ -11,10 +11,11 @@ IntervAI transforms technical hiring and skill assessment with a synchronized wo
 
 - **Real-Time Code Collaboration:** Token-controlled concurrent editing with Monaco Editor and Socket.IO.
 - **Authoritative Judge0 Execution:** Sandboxed code execution supporting multiple languages (Python, JavaScript, TypeScript, C++, Java, C) with hidden test-case validation.
-- **Adaptive AI Interviewer:** Powered by Google Gemini (`gemini-3.6-flash`), dynamically evaluating responses, adjusting difficulty, and asking context-aware follow-up questions.
-- **Full-Spectrum Proctoring:** Computer vision face verification (MediaPipe), tab-switch tracking, fullscreen enforcement, prohibited object detection, and secondary mobile-camera pairing over WebRTC.
+- **Gemini AI Evaluation:** Generates interview questions, evaluates candidate answers and code, parses resumes, scores system designs, and writes an optional final report summary.
+- **Interview Monitoring:** Candidate-side MediaPipe face/head/object checks and browser visibility-change events stream to the backend and persist as violations. Fullscreen, copy/paste, microphone monitoring, and automatic question advancement are not integrated.
+- **Secondary Camera:** Optional mobile camera pairing over WebRTC; this stream is not evaluated by AI.
 - **System Design Canvas:** Interactive node-and-edge whiteboard for software architecture interviews with real-time sync and AI evaluation.
-- **Automated AI Final Reports:** Comprehensive measurement of technical correctness, coding speed, communication skills, and integrity compliance with instant executive summaries.
+- **Interview Reports:** Persisted scorecards from coding, evaluated answers, and recorded integrity events, with an optional Gemini-generated summary and an explicitly labeled metrics-based fallback.
 
 ---
 
@@ -88,14 +89,14 @@ npm run dev
 ```bash
 cd ai-monitoring
 cp .env.example .env
-# Set GEMINI_API_KEY and GEMINI_MODEL=gemini-3.6-flash
+# Set GEMINI_API_KEY, GEMINI_MODEL=gemini-3-flash-preview, and AI_SERVICE_TOKEN
 npm install
 npm run dev
 ```
 
 #### Frontend Client
 ```bash
-cd client
+cd frontend
 cp .env.example .env
 npm install
 npm run dev
@@ -115,6 +116,7 @@ JWT_SECRET=your-secure-random-jwt-secret
 JWT_EXPIRES_IN=7d
 CLIENT_URL=http://localhost:5179
 AI_MONITORING_URL=http://localhost:5050
+AI_SERVICE_TOKEN=replace-with-a-long-random-shared-secret
 JUDGE0_API_URL=https://ce.judge0.com
 JUDGE0_API_KEY=
 NODE_ENV=development
@@ -125,16 +127,18 @@ PUBLIC_CLIENT_URL=http://localhost:5179
 ```ini
 AI_MONITORING_PORT=5050
 GEMINI_API_KEY=your-gemini-api-key
-GEMINI_MODEL=gemini-3.6-flash
+GEMINI_MODEL=gemini-3-flash-preview
+AI_SERVICE_TOKEN=replace-with-the-same-long-random-shared-secret
 CLIENT_URL=http://localhost:5179
 ```
 
-### Frontend (`client/.env`)
+### Frontend (`frontend/.env`)
 ```ini
 VITE_API_URL=http://localhost:5001
 VITE_SOCKET_URL=http://localhost:5001
-VITE_AI_MONITORING_URL=http://localhost:5050
 ```
+
+`AI_SERVICE_TOKEN` must be the same unpredictable value in `server/.env` and `ai-monitoring/.env`. The browser calls the backend only; it must not call or hold credentials for the AI service.
 
 ---
 
@@ -151,7 +155,7 @@ VITE_AI_MONITORING_URL=http://localhost:5050
 6. **AI Evaluation**: Gemini evaluates algorithm complexity, code quality, and technical correctness.
 7. **Proctoring**: Real-time violation logs (tab blur, multiple faces, absent candidate) stream over WebSockets and persist to MongoDB.
 8. **Completion**: Interviewer clicks **End Interview** (`ACTIVE` -> `COMPLETED`).
-9. **Final Report**: The system compiles technical scores, coding benchmarks, integrity scores, and an AI executive summary.
+9. **Final Report**: The system persists measured scores and violations, then attempts a Gemini summary. The report marks when that AI summary is unavailable and displays the metrics-based summary instead.
 
 ---
 
@@ -159,5 +163,6 @@ VITE_AI_MONITORING_URL=http://localhost:5050
 
 - 📐 **[System Architecture](ARCHITECTURE.md)**: Deep dive into Socket.IO token control, WebRTC signaling, Judge0 sandbox, and data models.
 - 📡 **[API Documentation](API_DOCUMENTATION.md)**: Complete REST API and WebSocket event contracts.
+- 🤖 **[AI Integration Audit](AI_INTEGRATION_AUDIT.md)**: Feature-by-feature AI workflow trace, monitoring boundaries, status matrix, and verification evidence.
 - 🎯 **[Interview Workflow](INTERVIEW_WORKFLOW.md)**: Step-by-step operational handbook for interviewers and candidates.
-- 💻 **[Frontend Guide](client/README.md)**: Component hierarchy, state management, and styling specifications.
+- 💻 **[Frontend Guide](frontend/README.md)**: Component hierarchy, state management, and styling specifications.

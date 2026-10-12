@@ -38,6 +38,11 @@ const systemDesignSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.Mixed,
       default: null
     },
+    aiEvaluationStatus: {
+      type: String,
+      enum: ['NOT_SUBMITTED', 'COMPLETED', 'FAILED'],
+      default: 'NOT_SUBMITTED'
+    },
     isSubmitted: {
       type: Boolean,
       default: false

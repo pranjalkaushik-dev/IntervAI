@@ -86,7 +86,7 @@ Code execution integrity is maintained through authoritative backend proxying:
 
 ### 4. AI Evaluation & Adaptive Interview Pipeline
 
-The AI Monitoring service (`ai-monitoring`) leverages Google Gemini (`gemini-3.6-flash`) with LangChain structured output parsing:
+The AI Monitoring service (`ai-monitoring`) uses the configured Gemini model (default `gemini-3-flash-preview`) with schema validation for generated questions, answer/coding evaluations, and system-design evaluation. The backend authenticates service requests with the shared `AI_SERVICE_TOKEN`; the browser does not call the AI service directly.
 
 ```
 [Candidate Code / Answer]
@@ -101,8 +101,11 @@ The AI Monitoring service (`ai-monitoring`) leverages Google Gemini (`gemini-3.6
                                       [Targeted Context-Aware Follow-Up Prompt]
 ```
 
-- **Resilience & Rate-Limiting**: The engine incorporates exponential backoff retries (`withRetry`) to gracefully handle API quota windows without dropping user sessions.
-- **Final Report Generation**: Upon interview conclusion, the backend compiles candidate submissions, test outcomes, proctoring violations, and interviewer notes into a unified payload for Gemini to generate a cohesive factual summary.
+- **Resilience & Failure Reporting**: Selected AI calls retry transient model failures and backend-to-AI requests have a timeout. Failed AI summaries/evaluations are marked unavailable rather than represented by fabricated model scores.
+- **Final Report Generation**: The backend compiles measured candidate scores, test outcomes, and persisted violations; it stores the Gemini summary status separately from the metrics-based fallback text.
+- **Adaptive Assistant Scope**: The interviewer panel evaluates manually entered candidate answers and saves evaluated turns. It does not automatically replace the shared interview question or advance the candidate's synchronized question index.
+
+Live candidate proctoring is MediaPipe running in the browser: face presence/count, head pose, and prohibited-object detections are forwarded as violation events. Browser visibility-change events are also forwarded. The standalone browser monitor library is not wired into the interview page, so fullscreen, copy/paste, camera-track, and microphone-track events are not monitored by the live workflow.
 
 ---
 

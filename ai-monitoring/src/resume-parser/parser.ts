@@ -29,33 +29,30 @@ Return ONLY a valid JSON object matching this exact structure, with no markdown 
 
 Important: Extract ONLY factual data from the text. Do not invent missing experience or skills.`;
 
-  try {
-    const response = await llm.invoke(prompt);
-    const rawContent = typeof response.content === "string" ? response.content : JSON.stringify(response.content);
-    const cleaned = rawContent.replace(/^```json\s*/i, "").replace(/^```\s*/, "").replace(/```$/, "").trim();
-    const parsed = JSON.parse(cleaned);
+  const response = await llm.invoke(prompt);
+  const rawContent = typeof response.content === "string" ? response.content : JSON.stringify(response.content);
+  const cleaned = rawContent.replace(/^```json\s*/i, "").replace(/^```\s*/, "").replace(/```$/, "").trim();
+  const parsed = JSON.parse(cleaned);
 
-    return {
-      name: String(parsed.name || "Candidate"),
-      email: String(parsed.email || ""),
-      skills: Array.isArray(parsed.skills) ? parsed.skills.map(String) : [],
-      technologies: Array.isArray(parsed.technologies) ? parsed.technologies.map(String) : [],
-      projects: Array.isArray(parsed.projects) ? parsed.projects.map(String) : [],
-      education: Array.isArray(parsed.education) ? parsed.education.map(String) : [],
-      experience: Array.isArray(parsed.experience) ? parsed.experience.map(String) : [],
-    };
-  } catch (error) {
-    console.warn("[AI Resume Parser Fallback]:", error);
-    // Basic regex fallback if LLM is unavailable or fails JSON parsing
-    const emailMatch = rawText.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
-    return {
-      name: "Parsed Candidate",
-      email: emailMatch ? emailMatch[0] : "",
-      skills: ["Software Engineering", "Problem Solving"],
-      technologies: [],
-      projects: [],
-      education: [],
-      experience: [],
-    };
+  if (
+    typeof parsed !== "object" ||
+    parsed === null ||
+    typeof parsed.name !== "string" ||
+    typeof parsed.email !== "string" ||
+    !["skills", "technologies", "projects", "education", "experience"].every((key) =>
+      Array.isArray(parsed[key]) && parsed[key].every((value: unknown) => typeof value === "string")
+    )
+  ) {
+    throw new Error("AI resume response did not match the required format");
   }
+
+  return {
+    name: parsed.name,
+    email: parsed.email,
+    skills: parsed.skills,
+    technologies: parsed.technologies,
+    projects: parsed.projects,
+    education: parsed.education,
+    experience: parsed.experience,
+  };
 }

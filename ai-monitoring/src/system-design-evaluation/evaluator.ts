@@ -1,4 +1,16 @@
 import { llm } from "../llm.js";
+import { z } from "zod";
+
+const systemDesignEvalSchema = z.object({
+  overallScore: z.number().min(0).max(100),
+  completenessScore: z.number().min(0).max(100),
+  scalabilityScore: z.number().min(0).max(100),
+  componentSelectionScore: z.number().min(0).max(100),
+  summary: z.string().min(1),
+  strengths: z.array(z.string().min(1)),
+  bottlenecks: z.array(z.string().min(1)),
+  suggestions: z.array(z.string().min(1)),
+});
 
 export interface SystemDesignNode {
   id: string;
@@ -76,33 +88,10 @@ Return ONLY a valid JSON object with no markdown formatting matching this exact 
   "suggestions": ["Actionable design improvement suggestion 1"]
 }`;
 
-  try {
-    const response = await llm.invoke(prompt);
-    const rawContent = typeof response.content === "string" ? response.content : JSON.stringify(response.content);
-    const cleaned = rawContent.replace(/^```json\s*/i, "").replace(/^```\s*/, "").replace(/```$/, "").trim();
-    const parsed = JSON.parse(cleaned);
+  const response = await llm.invoke(prompt);
+  const rawContent = typeof response.content === "string" ? response.content : JSON.stringify(response.content);
+  const cleaned = rawContent.replace(/^```json\s*/i, "").replace(/^```\s*/, "").replace(/```$/, "").trim();
+  const parsed = systemDesignEvalSchema.parse(JSON.parse(cleaned));
 
-    return {
-      overallScore: Number(parsed.overallScore) || 75,
-      completenessScore: Number(parsed.completenessScore) || 75,
-      scalabilityScore: Number(parsed.scalabilityScore) || 75,
-      componentSelectionScore: Number(parsed.componentSelectionScore) || 75,
-      summary: String(parsed.summary || "System design architecture submitted."),
-      strengths: Array.isArray(parsed.strengths) ? parsed.strengths.map(String) : [],
-      bottlenecks: Array.isArray(parsed.bottlenecks) ? parsed.bottlenecks.map(String) : [],
-      suggestions: Array.isArray(parsed.suggestions) ? parsed.suggestions.map(String) : [],
-    };
-  } catch (error) {
-    console.warn("[AI System Design Evaluator Fallback]:", error);
-    return {
-      overallScore: 70,
-      completenessScore: 70,
-      scalabilityScore: 70,
-      componentSelectionScore: 70,
-      summary: "System design architecture submitted with valid components.",
-      strengths: ["Included core application services."],
-      bottlenecks: ["Consider adding load balancing and cache replication."],
-      suggestions: ["Add read-replicas for database scalability."],
-    };
-  }
+  return parsed;
 }
